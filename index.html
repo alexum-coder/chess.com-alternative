@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open Chess</title>
+<style>
+  :root {
+    --bg: #1b2430; --panel: #243142; --ink: #e9eef3; --muted: #8fa1b3;
+    --light: #c9d6df; --dark: #52677a; --accent: #f2b84b;
+    --last: rgba(242,184,75,.55); --dot: rgba(27,36,48,.35);
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 20px 16px 40px;
+    display: grid; gap: 20px; grid-template-columns: minmax(0, 560px) 1fr; align-items: start; }
+  @media (max-width: 820px) { main { grid-template-columns: 1fr; } }
+  h1 { margin: 0 0 4px; font-size: 1.5rem; letter-spacing: -.01em; }
+  .sub { color: var(--muted); margin: 0 0 16px; }
+  .bar { display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 12px; background: var(--panel); border-radius: 8px; margin: 8px 0; }
+  .bar .who { font-weight: 600; } .bar .who small { color: var(--muted); font-weight: 400; }
+  .clock { font: 600 1.4rem ui-monospace, Menlo, monospace; min-width: 4.5ch; text-align: right; }
+  .clock.active { color: var(--accent); } .clock.low { color: #ff7a7a; }
+  #board { display: grid; grid-template-columns: repeat(8, 1fr); aspect-ratio: 1;
+    border-radius: 6px; overflow: hidden; user-select: none; touch-action: manipulation; }
+  .sq { position: relative; display: grid; place-items: center; cursor: pointer;
+    font-size: min(8vw, 52px); line-height: 1; }
+  .sq.l { background: var(--light); } .sq.d { background: var(--dark); }
+  .sq.last::before { content: ""; position: absolute; inset: 0; background: var(--last); }
+  .sq.sel { outline: 3px solid var(--accent); outline-offset: -3px; }
+  .sq.target::after { content: ""; width: 28%; height: 28%; border-radius: 50%; background: var(--dot); position: absolute; }
+  .sq.target.cap::after { width: 86%; height: 86%; background: none; border: 4px solid var(--dot); }
+  .pc { position: relative; z-index: 1; }
+  .pc.w { color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000, 0 1px 3px #000; }
+  .pc.b { color: #151b23; text-shadow: 0 0 1px #fff; }
+  .panel { background: var(--panel); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .panel h2 { margin: 0 0 10px; font-size: 1rem; }
+  label { display: block; color: var(--muted); font-size: .85rem; margin-bottom: 4px; }
+  input { width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid #3a4b61;
+    background: var(--bg); color: var(--ink); font: inherit; }
+  .modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
+  button { font: inherit; cursor: pointer; border-radius: 6px; border: 1px solid #3a4b61;
+    background: var(--bg); color: var(--ink); padding: 10px 8px; }
+  button:hover { border-color: var(--accent); }
+  button:focus-visible, .sq:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.primary { background: var(--accent); color: #1b2430; border-color: var(--accent); font-weight: 600; }
+  .modes button b { display: block; } .modes button span { color: var(--muted); font-size: .8rem; }
+  #moves { max-height: 220px; overflow: auto; font-family: ui-monospace, Menlo, monospace; font-size: .9rem;
+    display: grid; grid-template-columns: 2.5rem 1fr 1fr; gap: 2px 8px; }
+  #moves .n { color: var(--muted); }
+  #status { min-height: 1.5em; color: var(--accent); }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <section aria-label="Game">
+    <div class="bar"><div class="who" id="topName">Opponent</div><div class="clock" id="topClock">--:--</div></div>
+    <div id="board" role="grid" aria-label="Chess board"></div>
+    <div class="bar"><div class="who" id="botName">You</div><div class="clock" id="botClock">--:--</div></div>
+  </section>
+
+  <aside>
+    <h1>Open Chess</h1>
+    <p class="sub">Free, real-time chess against a live opponent.</p>
+
+    <div class="panel" id="lobby">
+      <h2>Find a game</h2>
+      <label for="name">Display name</label>
+      <input id="name" maxlength="20" placeholder="Guest">
+      <div class="modes">
+        <button data-b="60" data-i="0"><b>1 min</b><span>Bullet</span></button>
+        <button data-b="180" data-i="2"><b>3 + 2</b><span>Blitz</span></button>
+        <button data-b="300" data-i="0"><b>5 min</b><span>Blitz</span></button>
+        <button data-b="600" data-i="0"><b>10 min</b><span>Rapid</span></button>
+        <button data-b="900" data-i="10"><b>15 + 10</b><span>Rapid</span></button>
+        <button data-b="1800" data-i="0"><b>30 min</b><span>Classical</span></button>
+      </div>
+      <button class="primary hidden" id="cancel">Cancel search</button>
+    </div>
+
+    <div class="panel hidden" id="gamePanel">
+      <h2>Moves</h2>
+      <div id="moves"></div>
+      <p id="status"></p>
+      <button id="resign">Resign</button>
+      <button id="again" class="primary hidden">Play again</button>
+    </div>
+    <p class="sub" id="me"></p>
+  </aside>
+</main>
+
+<script src="/socket.io/socket.io.js"></script>
+<script type="module">
+import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.0.0/+esm';
+
+const GLYPH = { p: '♟︎', n: '♞', b: '♝', r: '♜', q: '♛', k: '♚' };
+const $ = (s) => document.querySelector(s);
+const socket = io();
+
+let pid = localStorage.getItem('pid') || crypto.randomUUID();
+localStorage.setItem('pid', pid);
+$('#name').value = localStorage.getItem('name') || '';
+
+let game = null;     // { id, color, chess, clock, turn, started, last, over, names }
+let selected = null, targets = [], tick = null;
+
+const hello = () => socket.emit('hello', { id: pid, name: $('#name').value.trim() || 'Guest' });
+socket.on('connect', hello);
+socket.on('me', (m) => { $('#me').textContent = `${m.name} · rating ${m.rating}`; });
+$('#name').addEventListener('change', () => { localStorage.setItem('name', $('#name').value); hello(); });
+
+document.querySelectorAll('.modes button').forEach((b) =>
+  b.addEventListener('click', () => {
+    hello();
+    socket.emit('seek', { base: +b.dataset.b, inc: +b.dataset.i });
+  }));
+$('#cancel').addEventListener('click', () => { socket.emit('cancelSeek'); $('#cancel').classList.add('hidden'); });
+$('#resign').addEventListener('click', () => game && !game.over && socket.emit('resign', { gameId: game.id }));
+$('#again').addEventListener('click', () => { $('#lobby').classList.remove('hidden'); $('#again').classList.add('hidden'); });
+
+socket.on('waiting', () => $('#cancel').classList.remove('hidden'));
+
+socket.on('start', (s) => {
+  game = { id: s.gameId, color: s.color, chess: new Chess(s.fen), clock: s.clock, turn: 'w',
+    started: false, last: null, over: false, stamp: Date.now(), moves: [] };
+  const me = s.color === 'w' ? s.white : s.black, opp = s.color === 'w' ? s.black : s.white;
+  $('#botName').innerHTML = `${me.name} <small>${me.rating}</small>`;
+  $('#topName').innerHTML = `${opp.name} <small>${opp.rating}</small>`;
+  $('#lobby').classList.add('hidden'); $('#cancel').classList.add('hidden');
+  $('#gamePanel').classList.remove('hidden'); $('#again').classList.add('hidden');
+  $('#resign').classList.remove('hidden');
+  $('#status').textContent = s.color === 'w' ? 'You are White. Your move.' : 'You are Black.';
+  selected = null; targets = [];
+  render(); clearInterval(tick); tick = setInterval(drawClocks, 100);
+});
+
+socket.on('state', (s) => {
+  if (!game) return;
+  game.chess.load(s.fen);
+  game.clock = s.clock; game.turn = s.turn; game.started = s.started;
+  game.last = [s.from, s.to]; game.stamp = Date.now(); game.moves.push(s.san);
+  selected = null; targets = [];
+  $('#status').textContent = game.chess.inCheck() ? 'Check!' : (s.turn === game.color ? 'Your move.' : '');
+  render();
+});
+
+socket.on('over', (o) => {
+  if (!game) return;
+  game.over = true; clearInterval(tick);
+  const mine = game.color === 'w' ? 1 : 0;
+  const won = (o.result === '1-0' && mine) || (o.result === '0-1' && !mine);
+  const text = o.result === '1/2-1/2' ? 'Draw' : won ? 'You won' : 'You lost';
+  const dw = game.color === 'w' ? o.ratings.dw : -o.ratings.dw;
+  $('#status').textContent = `${text} by ${o.reason}. Rating ${dw >= 0 ? '+' : ''}${dw}.`;
+  $('#resign').classList.add('hidden'); $('#again').classList.remove('hidden');
+  hello(); render();
+});
+
+function fmt(ms) {
+  ms = Math.max(0, ms); const s = Math.ceil(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+function drawClocks() {
+  if (!game) return;
+  const elapsed = game.started && !game.over ? Date.now() - game.stamp : 0;
+  const me = game.color, opp = me === 'w' ? 'b' : 'w';
+  const val = (c) => game.clock[c] - (game.turn === c ? elapsed : 0);
+  for (const [el, c] of [[$('#botClock'), me], [$('#topClock'), opp]]) {
+    const v = val(c); el.textContent = fmt(v);
+    el.classList.toggle('active', game.turn === c && !game.over);
+    el.classList.toggle('low', v < 10000);
+  }
+}
+
+function render() {
+  const boardEl = $('#board'); boardEl.innerHTML = '';
+  if (!game) return;
+  const flip = game.color === 'b';
+  const grid = game.chess.board();
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+    const rr = flip ? 7 - r : r, cc = flip ? 7 - c : c;
+    const name = 'abcdefgh'[cc] + (8 - rr);
+    const p = grid[rr][cc];
+    const el = document.createElement('div');
+    el.className = 'sq ' + ((rr + cc) % 2 ? 'd' : 'l');
+    el.dataset.sq = name; el.tabIndex = 0;
+    if (game.last?.includes(name)) el.classList.add('last');
+    if (selected === name) el.classList.add('sel');
+    if (targets.includes(name)) { el.classList.add('target'); if (p) el.classList.add('cap'); }
+    if (p) el.innerHTML = `<span class="pc ${p.color}">${GLYPH[p.type]}</span>`;
+    el.addEventListener('click', () => onSquare(name));
+    el.addEventListener('keydown', (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onSquare(name)));
+    boardEl.appendChild(el);
+  }
+  const m = $('#moves'); m.innerHTML = '';
+  game.moves.forEach((san, i) => {
+    if (i % 2 === 0) m.insertAdjacentHTML('beforeend', `<span class="n">${i / 2 + 1}.</span>`);
+    m.insertAdjacentHTML('beforeend', `<span>${san}</span>`);
+  });
+  m.scrollTop = m.scrollHeight;
+  drawClocks();
+}
+
+function onSquare(sq) {
+  if (!game || game.over || game.chess.turn() !== game.color) return;
+  if (selected && targets.includes(sq)) {
+    socket.emit('move', { gameId: game.id, from: selected, to: sq, promotion: 'q' }); // auto-queen
+    selected = null; targets = []; return render();
+  }
+  const piece = game.chess.get(sq);
+  if (piece && piece.color === game.color) {
+    selected = sq;
+    targets = game.chess.moves({ square: sq, verbose: true }).map((m) => m.to);
+  } else { selected = null; targets = []; }
+  render();
+}
+</script>
+</body>
+</html>
