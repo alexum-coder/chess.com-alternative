@@ -117,14 +117,19 @@ let game = null;     // { id, color, chess, clock, turn, started, last, over, na
 let selected = null, targets = [], tick = null;
 
 const sb = window.ZZ?.sb || null;
-let token = null, myName = null;
+let token = null, myName = null, tokenBroken = false;
+const useToken = () => (token && !tokenBroken ? token : undefined);
 
-const hello = () => socket.emit('hello', { id: pid, name: $('#name').value.trim() || 'Guest', token });
+const hello = () => socket.emit('hello', { id: pid, name: $('#name').value.trim() || 'Guest', token: useToken() });
 socket.on('connect', hello);
 socket.on('me', (m) => { myName = m.name; $('#me').textContent = `${m.name} · rating ${m.rating}${m.authed ? '' : ' (guest, not saved)'}`; updateAuthUI(); });
-socket.on('autherror', (t) => { $('#me').textContent = t; token = null; sb?.auth.signOut(); });
+socket.on('autherror', (e) => {
+  $('#me').textContent = e.text;
+  if (e.signOut) { token = null; sb?.auth.signOut(); }
+  else { tokenBroken = true; updateAuthUI(); hello(); } // fall back to guest, stay logged in
+});
 
-function updateAuthUI() { $('#nameWrap').classList.toggle('hidden', !!token); }
+function updateAuthUI() { $('#nameWrap').classList.toggle('hidden', !useToken()); }
 async function loadBoard() {
   try {
     const rows = await (await fetch('/api/leaderboard')).json();

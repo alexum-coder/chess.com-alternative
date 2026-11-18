@@ -34,19 +34,22 @@ app.get('/api/leaderboard', async (req, res) => {
 // Loads (or creates) the profile for a Supabase session token and caches it.
 async function accountFor(token) {
   const { data, error } = await db.auth.getUser(token);
-  if (error || !data.user) throw new Error('invalid session');
+  if (error || !data.user) throw new Error(error && error.status >= 500 ? 'auth: ' + error.message : 'invalid session');
   const u = data.user;
   if (!users.get(u.id)?.authed) {
-    let { data: prof } = await db.from('profiles').select('*').eq('id', u.id).maybeSingle();
+    let { data: prof, error: selErr } = await db.from('profiles').select('*').eq('id', u.id).maybeSingle();
+    if (selErr) throw new Error('profile lookup: ' + selErr.message);
+    let lastErr = null;
     if (!prof) {
       const base = String(u.user_metadata?.username || (u.email || 'player').split('@')[0])
         .replace(/[^\w]/g, '').slice(0, 16) || 'player';
       for (let i = 0; i < 5 && !prof; i++) {
         const username = i === 0 ? base : base + Math.floor(1000 + Math.random() * 9000);
         const r = await db.from('profiles').insert({ id: u.id, username }).select().single();
-        if (!r.error) prof = r.data;
+        if (!r.error) prof = r.data; else lastErr = r.error;
       }
     }
+    if (!prof) throw new Error('profile create: ' + (lastErr ? lastErr.message : 'failed'));
     users.set(u.id, { name: prof.username, rating: prof.rating, games: prof.games_played, since: prof.created_at, authed: true });
   }
   return { id: u.id, ...users.get(u.id) };
@@ -57,7 +60,10 @@ app.use(express.json());
 app.get('/api/me', async (req, res) => {
   if (!db) return res.status(503).json({ error: 'Accounts are not set up.' });
   try { res.json(await accountFor(bearer(req))); }
-  catch { res.status(401).json({ error: 'Please log in again.' }); }
+  catch (e) {
+    console.error('/api/me failed:', e.message);
+    res.status(e.message === 'invalid session' ? 401 : 500).json({ error: e.message === 'invalid session' ? 'Please log in again.' : 'Could not load your account.' });
+  }
 });
 app.post('/api/username', async (req, res) => {
   if (!db) return res.status(503).json({ error: 'Accounts are not set up.' });
@@ -164,7 +170,12 @@ io.on('connection', (socket) => {
       }
       socket.emit('me', { id: pid, ...users.get(pid) });
     } catch (e) {
-      socket.emit('autherror', 'Session expired. Please log in again.');
+      console.error('hello failed:', e.message);
+      const expired = e.message === 'invalid session';
+      socket.emit('autherror', {
+        signOut: expired,
+        text: expired ? 'Session expired. Please log in again.' : 'Could not load your account, so you are playing as a guest.'
+      });
     }
   });
 
