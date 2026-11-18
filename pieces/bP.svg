@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45" width="45" height="45">
+<!-- Zugzwang piece set. Original artwork, CC0 1.0 (public domain dedication). -->
+<style>.s{fill:#46525f;stroke:#0b0f14;stroke-width:1.5;stroke-linejoin:round;stroke-linecap:round}
+.l{fill:none;stroke:#c9d3de;stroke-width:1.1;stroke-linecap:round;stroke-linejoin:round;opacity:.55}
+.l.f{fill:#c9d3de;stroke:none;opacity:.85}</style>
+<path class="s" d="M16.5 35c.3-5.2 2-8.6 3.6-11.4h4.8c1.6 2.8 3.3 6.2 3.6 11.4z"/>
+        <path class="s" d="M15.6 22.2h13.8a1 1 0 0 1 0 2.6H15.6a1 1 0 0 1 0-2.6z" transform="translate(0 -.4)"/>
+        <circle class="s" cx="22.5" cy="14.6" r="5.4"/><path class="s" d="M10.5 39.5v-1.8c0-1.5 1.1-2.7 2.6-2.7h18.8c1.5 0 2.6 1.2 2.6 2.7v1.8z"/>
+<path class="l" d="M19 30.5h7"/>
+</svg>

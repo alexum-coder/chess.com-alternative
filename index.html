@@ -25,25 +25,50 @@
   .clock.low { color: var(--loss); } .clock.active.low { background: var(--loss); color: #1b2430; }
 
   .boardwrap { position: relative; }
-  #board { display: grid; grid-template-columns: repeat(8, 1fr); aspect-ratio: 1; border-radius: 10px; overflow: hidden;
+  #board { display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); aspect-ratio: 1; border-radius: 10px; overflow: hidden;
     box-shadow: 0 24px 40px -24px rgba(0,0,0,.8); user-select: none; touch-action: manipulation; }
-  .sq { position: relative; display: grid; place-items: center; cursor: pointer; }
+  .sq { position: relative; display: grid; place-items: center; cursor: pointer; min-width: 0; min-height: 0; }
   .sq.l { background-color: var(--light); } .sq.d { background-color: var(--dark); }
   .sq.last::before { content: ""; position: absolute; inset: 0; background: var(--last); }
   .sq.chk { background-image: radial-gradient(circle, rgba(255,70,70,.9) 0, rgba(255,70,70,0) 72%); }
   .sq.sel { box-shadow: inset 0 0 0 3px var(--accent); }
   .sq.target::after { content: ""; position: absolute; width: 28%; height: 28%; border-radius: 50%; background: var(--dot); }
   .sq.target.cap::after { width: 88%; height: 88%; background: none; border: 5px solid var(--dot); }
-  .sq i { position: absolute; font: 700 .64rem/1 Manrope, sans-serif; font-style: normal; opacity: .8; pointer-events: none; }
+  .sq i { position: absolute; z-index: 3; font: 700 .64rem/1 Manrope, sans-serif; font-style: normal; opacity: .8; pointer-events: none; }
   .sq i.f { right: 4px; bottom: 3px; } .sq i.r { left: 4px; top: 3px; }
   .sq.l i { color: var(--dark); } .sq.d i { color: var(--light); }
-  .pc { position: relative; z-index: 1; width: 90%; height: 90%; pointer-events: none; }
+  .pc { position: relative; z-index: 1; width: 86%; height: 86%; pointer-events: none;
+    filter: drop-shadow(0 1.5px 1.5px rgba(0,0,0,.35)); }
+  .pc.ghost { position: absolute; opacity: .5; z-index: 2; }
+
+  /* premoves: blue, so they are never confused with the yellow last-move highlight */
+  .sq.pre-from::before, .sq.pre-to::before { content: ""; position: absolute; inset: 0; background: var(--pre); }
+  .sq.target.pre::after { background: var(--pre-dot); }
+  .sq.target.cap.pre::after { background: none; border-color: var(--pre-dot); }
   .sq.last .pc { animation: land .16s ease-out; }
   @keyframes land { from { transform: scale(1.12); } to { transform: scale(1); } }
   .sq:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
 
   .veil { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 10px;
     background: rgba(16,22,29,.66); backdrop-filter: blur(2px); }
+  /* promotion picker: a column of four pieces dropping from (or rising to) the promotion square */
+  .promo { position: absolute; inset: 0; z-index: 4; background: rgba(10,14,19,.55); border-radius: 10px; }
+  .promo-col { position: absolute; width: 12.5%; display: flex; background: var(--panel); border-radius: 10px;
+    box-shadow: 0 12px 32px rgba(0,0,0,.6); overflow: hidden; border: 1px solid var(--line); }
+  .promo-col.down { flex-direction: column; } .promo-col.up { flex-direction: column-reverse; }
+  .promo-btn { aspect-ratio: 1; width: 100%; padding: 0; border: 0; border-radius: 0; background: var(--light);
+    display: grid; place-items: center; cursor: pointer; }
+  .promo-btn:nth-child(even) { background: #b3c3cf; }
+  .promo-btn:hover, .promo-btn:focus-visible { background: var(--accent); outline: none; }
+  .promo-btn img { width: 88%; height: 88%; pointer-events: none; }
+
+  /* Incoming draw offer. It sits on the opponent's name strip just above the board (never over the squares,
+     so you can still move instead of answering) and leaves their clock visible. */
+  .drawbar { position: absolute; left: 0; right: 124px; bottom: calc(100% + 8px); height: 54px; z-index: 3; display: flex;
+    align-items: center; gap: 8px; padding: 0 10px; background: var(--panel); border: 1px solid var(--accent); border-radius: 12px; }
+  .drawbar span { font-weight: 700; margin-right: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .drawbar button { padding: 6px 10px; font-size: .9rem; }
+
   .veil-card { text-align: center; padding: 20px 28px; max-width: 320px; }
   .veil-card h2 { margin: 0 0 4px; font-size: 1.7rem; letter-spacing: -.02em; }
   .veil-card p { margin: 0 0 16px; color: var(--light); }
@@ -76,6 +101,15 @@
   ol.lb li::before { content: counter(r); color: var(--muted); width: 1.4rem; }
   ol.lb li.none { color: var(--muted); } ol.lb li.none::before { content: none; }
   ol.lb li:last-child { border: 0; } ol.lb span { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 700; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  button:disabled { opacity: .5; cursor: not-allowed; border-color: var(--line); }
+  .note { color: var(--muted); font-size: .85rem; margin: 10px 0 0; min-height: 1.3em; }
+  .prebar { display: flex; align-items: center; gap: 10px; margin: -4px 0 12px; padding: 6px 10px; border-radius: 8px;
+    background: rgba(86,140,255,.14); border: 1px solid rgba(86,140,255,.45); font-size: .9rem; }
+  .prebar button { margin-left: auto; padding: 4px 10px; font-size: .85rem; white-space: nowrap; }
+  .switch { display: flex; align-items: center; gap: 10px; color: var(--ink); font-size: 1rem; margin: 0; cursor: pointer; }
+  .switch input { width: 1.15rem; height: 1.15rem; padding: 0; accent-color: var(--accent); cursor: pointer; }
+  .hint { color: var(--muted); font-size: .8rem; margin: 8px 0 0; }
   .foot { color: var(--muted); font-size: .85rem; margin: 0; }
   .empty { color: var(--muted); margin: 0; }
   .hidden { display: none !important; }
@@ -91,6 +125,12 @@
     </div>
     <div class="boardwrap">
       <div id="board" role="grid" aria-label="Chess board"></div>
+      <div class="promo hidden" id="promo" role="dialog" aria-label="Choose a promotion piece"></div>
+      <div class="drawbar hidden" id="drawBar" role="alert">
+        <span>Draw offered</span>
+        <button class="primary" id="drawAccept">Accept</button>
+        <button id="drawDecline">Decline</button>
+      </div>
       <div class="veil" id="veil"></div>
     </div>
     <div class="player" id="botCard">
@@ -119,8 +159,19 @@
       <h2>Game</h2>
       <p id="youAre"></p>
       <p id="status" role="status"></p>
+      <div class="prebar hidden" id="preBar"><span id="preText"></span><button id="preCancel">Cancel premove</button></div>
       <div id="moves"></div>
-      <button id="resign">Resign</button>
+      <div class="actions" id="actions">
+        <button id="drawBtn">Offer draw</button>
+        <button id="resign">Resign</button>
+      </div>
+      <p class="note" id="drawNote" role="status" aria-live="polite"></p>
+    </div>
+
+    <div class="panel">
+      <h2>Settings</h2>
+      <label class="switch"><input type="checkbox" id="soundToggle" checked> Sound effects</label>
+      <p class="hint">While waiting for your opponent, click a piece and a square to queue a premove. Right-click, press Esc or tap an empty square to cancel it.</p>
     </div>
 
     <div class="panel"><h2>Top players</h2><ol class="lb" id="lb"></ol></div>
@@ -143,9 +194,72 @@ let pid = localStorage.getItem('pid') || crypto.randomUUID();
 localStorage.setItem('pid', pid);
 $('#name').value = localStorage.getItem('name') || '';
 
+/* ---------- sounds (synthesised with Web Audio: no audio files to host or license) ---------- */
+const Sound = (() => {
+  let ctx = null, out = null, noiseBuf = null, on = true;
+  try { on = localStorage.getItem('zz.sound') !== 'off'; } catch {}
+  // Browsers only allow audio after a user gesture, so the context is created on first interaction.
+  function unlock() {
+    if (!ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      ctx = new AC(); out = ctx.createGain(); out.gain.value = 0.9; out.connect(ctx.destination);
+      noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 0.25, ctx.sampleRate);
+      const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+  for (const ev of ['pointerdown', 'keydown']) window.addEventListener(ev, unlock, { passive: true });
+
+  // A wooden "tock": a short filtered noise burst plus a low thump.
+  function knock(t, { freq = 1100, gain = 0.5, dur = 0.06, thump = 150 } = {}) {
+    const src = ctx.createBufferSource(); src.buffer = noiseBuf;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = freq; bp.Q.value = 1.1;
+    const g = ctx.createGain(); g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    src.connect(bp).connect(g).connect(out); src.start(t); src.stop(t + dur + 0.02);
+    const o = ctx.createOscillator(); o.frequency.setValueAtTime(thump, t); o.frequency.exponentialRampToValueAtTime(thump * 0.55, t + dur);
+    const og = ctx.createGain(); og.gain.setValueAtTime(gain * 0.9, t); og.gain.exponentialRampToValueAtTime(0.001, t + dur * 1.4);
+    o.connect(og).connect(out); o.start(t); o.stop(t + dur * 1.5);
+  }
+  function tone(t, freq, { gain = 0.2, dur = 0.3, type = 'sine' } = {}) {
+    const o = ctx.createOscillator(); o.type = type; o.frequency.value = freq;
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(out); o.start(t); o.stop(t + dur + 0.02);
+  }
+  const sounds = {
+    move:    (t) => knock(t),
+    capture: (t) => { knock(t, { freq: 750, gain: 0.85, dur: 0.09, thump: 120 }); knock(t + 0.05, { freq: 1500, gain: 0.4, dur: 0.05 }); },
+    castle:  (t) => { knock(t); knock(t + 0.11, { freq: 1000, gain: 0.45 }); },
+    check:   (t) => { knock(t); tone(t + 0.07, 880, { gain: 0.16, dur: 0.28 }); tone(t + 0.15, 1175, { gain: 0.14, dur: 0.34 }); },
+    mate:    (t) => { knock(t, { freq: 700, gain: 0.9, dur: 0.1, thump: 110 });
+               [392, 330, 262].forEach((f, i) => tone(t + 0.1 + i * 0.12, f, { gain: 0.2, dur: 0.7, type: 'triangle' })); },
+    start:   (t) => { tone(t, 392, { gain: 0.14, dur: 0.22 }); tone(t + 0.12, 587, { gain: 0.14, dur: 0.3 }); },
+    end:     (t) => { tone(t, 523, { gain: 0.15, dur: 0.35 }); tone(t + 0.16, 392, { gain: 0.15, dur: 0.5 }); },
+    notify:  (t) => { tone(t, 740, { gain: 0.12, dur: 0.18 }); tone(t + 0.1, 740, { gain: 0.12, dur: 0.22 }); }
+  };
+  return {
+    get on() { return on; },
+    set(v) { on = !!v; try { localStorage.setItem('zz.sound', on ? 'on' : 'off'); } catch {} if (on) unlock(); },
+    play(name) {
+      if (!on || !sounds[name]) return;
+      try { if (unlock()) sounds[name](ctx.currentTime + 0.005); } catch {}
+    },
+    // The server sends standard algebraic notation, which already says what happened:
+    // "x" = capture, "+" = check, "#" = checkmate, "O-O" = castling.
+    forMove(san) { return san.includes('#') ? 'mate' : san.includes('+') ? 'check' : san.includes('x') ? 'capture' : san.startsWith('O-O') ? 'castle' : 'move'; }
+  };
+})();
+$('#soundToggle').checked = Sound.on;
+$('#soundToggle').addEventListener('change', (e) => { Sound.set(e.target.checked); Sound.play('move'); });
+
 const idleChess = new Chess();
-let game = null;   // { id, color, chess, clock, turn, last, over, stamp, moves, white, black }
-let selected = null, targets = [], tick = null;
+// game: { id, color, chess, clock, turn, last, over, stamp, moves, white, black,
+//         pre: queued premove {from,to,promotion}|null, sending: a move is awaiting the server,
+//         drawBy: 'w'|'b'|null pending draw offer, drawLock: ply from which I may offer again }
+let game = null;
+let selected = null, targets = [], tick = null, promoOpen = false;
 let myName = null, myRating = null;
 
 const sb = window.ZZ?.sb || null;
@@ -211,41 +325,75 @@ document.querySelectorAll('.modes button').forEach((b) => b.addEventListener('cl
   hello(); socket.emit('seek', { base: +b.dataset.b, inc: +b.dataset.i });
 }));
 $('#resign').addEventListener('click', () => game && !game.over && confirm('Resign this game?') && socket.emit('resign', { gameId: game.id }));
+$('#drawBtn').addEventListener('click', () => {
+  if (!game || game.over) return;
+  $('#drawNote').textContent = '';
+  socket.emit(game.drawBy === game.color ? 'drawCancel' : 'drawOffer', { gameId: game.id });
+});
+$('#drawAccept').addEventListener('click', () => game && socket.emit('drawAccept', { gameId: game.id }));
+$('#drawDecline').addEventListener('click', () => game && socket.emit('drawDecline', { gameId: game.id }));
+$('#preCancel').addEventListener('click', () => cancelPremove());
 socket.on('waiting', (key) => veil({ title: 'Finding an opponent', sub: `Time control ${key.replace('+', ' + ')}`, spin: true,
   button: { label: 'Cancel', onClick: () => { socket.emit('cancelSeek'); idleVeil(); } } }));
 
 /* ---------- game events (also used for reconnecting) ---------- */
 socket.on('start', (s) => {
   game = { id: s.gameId, color: s.color, chess: new Chess(s.fen), clock: s.clock, turn: s.turn || 'w', over: false,
-    stamp: Date.now() - (s.elapsed || 0), moves: s.moves || [], last: s.last || null, white: s.white, black: s.black };
-  selected = null; targets = [];
+    stamp: Date.now() - (s.elapsed || 0), moves: s.moves || [], last: s.last || null, white: s.white, black: s.black,
+    pre: null, sending: false, drawBy: s.draw || null, drawLock: s.drawLockedUntil || 0 };
+  selected = null; targets = []; closePromo();
   veil(null);
-  $('#lobby').classList.add('hidden'); $('#gamePanel').classList.remove('hidden'); $('#resign').classList.remove('hidden');
+  $('#lobby').classList.add('hidden'); $('#gamePanel').classList.remove('hidden'); $('#actions').classList.remove('hidden');
   $('#youAre').textContent = `You are playing ${s.color === 'w' ? 'White' : 'Black'}`;
-  $('#oppStatus').textContent = '';
+  $('#oppStatus').textContent = ''; $('#drawNote').textContent = '';
   paintPlayers(); setStatus(); render();
   clearInterval(tick); tick = setInterval(drawClocks, 100);
+  if (!game.moves.length) Sound.play('start'); // not on reconnects
 });
 
 socket.on('state', (s) => {
   if (!game) return;
   game.chess.load(s.fen);
   game.clock = s.clock; game.turn = s.turn; game.last = [s.from, s.to]; game.stamp = Date.now(); game.moves.push(s.san);
-  selected = null; targets = [];
+  game.sending = false;
+  selected = null; targets = []; closePromo();
+  Sound.play(Sound.forMove(s.san));
+  runPremove();
   setStatus(); render();
 });
+
+/* ---------- draw offers ---------- */
+socket.on('drawOffer', (e) => {
+  if (!game) return;
+  game.drawBy = e.by;
+  if (e.by === game.color) { game.drawLock = e.lockedUntil; $('#drawNote').textContent = 'Draw offer sent. Waiting for your opponent.'; }
+  else { $('#drawNote').textContent = ''; Sound.play('notify'); }
+  render();
+});
+socket.on('drawCleared', (e) => {
+  if (!game) return;
+  game.drawBy = null;
+  const mine = e.by === game.color;
+  $('#drawNote').textContent = mine
+    ? { declined: 'Your opponent declined the draw.', ignored: 'Your draw offer lapsed when your opponent moved.', cancelled: '' }[e.reason] || ''
+    : e.reason === 'cancelled' ? 'Your opponent withdrew the draw offer.' : '';
+  render();
+});
+socket.on('drawError', (e) => { if (game) { if (e.lockedUntil != null) game.drawLock = e.lockedUntil; $('#drawNote').textContent = e.text; render(); } });
 
 socket.on('opp', (e) => { $('#oppStatus').textContent = e.online ? '' : `Disconnected. Forfeits in ${e.seconds || 30}s unless they return.`; });
 
 socket.on('over', (o) => {
   if (!game) return;
   game.over = true; clearInterval(tick);
+  game.pre = null; game.drawBy = null; selected = null; targets = []; closePromo();
+  if (o.reason !== 'checkmate') Sound.play('end'); // checkmate already played its own sound with the final move
   const white = game.color === 'w';
   const won = (o.result === '1-0' && white) || (o.result === '0-1' && !white);
   const dw = white ? o.ratings.dw : -o.ratings.dw;
   const myNew = white ? o.ratings.w : o.ratings.b;
   $('#status').textContent = '';
-  $('#resign').classList.add('hidden');
+  $('#actions').classList.add('hidden'); $('#drawNote').textContent = '';
   hello(); render(); setTimeout(loadBoard, 1500);
   veil({
     title: o.result === '1/2-1/2' ? 'Draw' : won ? 'You won' : 'You lost',
@@ -296,9 +444,21 @@ function render() {
     el.dataset.sq = name; el.tabIndex = game ? 0 : -1;
     if (game?.last?.includes(name)) el.classList.add('last');
     if (selected === name) el.classList.add('sel');
-    if (targets.includes(name)) { el.classList.add('target'); if (p) el.classList.add('cap'); }
+    if (targets.includes(name)) {
+      el.classList.add('target'); if (p) el.classList.add('cap');
+      if (game && game.chess.turn() !== game.color) el.classList.add('pre'); // premove squares are drawn blue
+    }
+    if (game?.pre) {
+      if (name === game.pre.from) el.classList.add('pre-from');
+      if (name === game.pre.to) el.classList.add('pre-to');
+    }
     if (inCheck && p && p.type === 'k' && p.color === turn) el.classList.add('chk');
-    if (p) { const img = document.createElement('img'); img.className = 'pc'; img.alt = ''; img.draggable = false; img.src = `/pieces/${p.color}${p.type.toUpperCase()}.svg`; el.appendChild(img); }
+    if (p) el.appendChild(pieceImg(p.color, p.type));
+    // Show the queued piece faintly on its destination square.
+    if (game?.pre && name === game.pre.to) {
+      const mover = game.chess.get(game.pre.from);
+      if (mover) { const g = pieceImg(mover.color, game.pre.promotion || mover.type); g.classList.add('ghost'); el.appendChild(g); }
+    }
     if (r === 7) el.insertAdjacentHTML('beforeend', `<i class="f">${FILES[cc]}</i>`);
     if (c === 0) el.insertAdjacentHTML('beforeend', `<i class="r">${8 - rr}</i>`);
     el.addEventListener('click', () => onSquare(name));
@@ -312,19 +472,142 @@ function render() {
     m.appendChild(s);
   });
   m.scrollTop = m.scrollHeight;
+  paintDraw(); paintPremove();
   drawClocks();
 }
-function onSquare(sq) {
-  if (!game || game.over || game.chess.turn() !== game.color) return;
-  if (selected && targets.includes(sq)) {
-    socket.emit('move', { gameId: game.id, from: selected, to: sq, promotion: 'q' }); // auto-queen for now
-    selected = null; targets = []; return render();
+function pieceImg(color, type) {
+  const img = document.createElement('img');
+  img.className = 'pc'; img.alt = ''; img.draggable = false;
+  img.src = `/pieces/${color}${type.toUpperCase()}.svg`;
+  return img;
+}
+
+/* ---------- draw offer UI ---------- */
+function paintDraw() {
+  const live = game && !game.over;
+  const incoming = live && game.drawBy && game.drawBy !== game.color;
+  const outgoing = live && game.drawBy === game.color;
+  $('#drawBar').classList.toggle('hidden', !incoming);
+  const btn = $('#drawBtn');
+  btn.textContent = outgoing ? 'Cancel draw offer' : 'Offer draw';
+  // The server enforces the real limits; this just stops the button inviting spam.
+  const tooEarly = live && !outgoing && game.moves.length < Math.max(2, game.drawLock || 0);
+  btn.disabled = !live || incoming || tooEarly;
+  btn.title = incoming ? 'Answer your opponent’s offer first'
+    : tooEarly ? (game.moves.length < 2 ? 'Available after the first moves' : 'Make a couple more moves before offering again') : '';
+}
+
+/* ---------- promotion picker ---------- */
+function closePromo() { promoOpen = false; const p = $('#promo'); p.classList.add('hidden'); p.replaceChildren(); }
+function askPromotion(from, to, done) {
+  const flip = game.color === 'b';
+  const dispCol = flip ? 7 - FILES.indexOf(to[0]) : FILES.indexOf(to[0]);
+  const dispRow = flip ? +to[1] - 1 : 8 - +to[1];     // 0 = top of the screen
+  const down = dispRow < 4;                             // open toward the middle of the board
+  const box = $('#promo'); box.replaceChildren();
+  const col = document.createElement('div'); col.className = 'promo-col ' + (down ? 'down' : 'up');
+  col.style.left = dispCol * 12.5 + '%';
+  if (down) col.style.top = dispRow * 12.5 + '%'; else col.style.bottom = (7 - dispRow) * 12.5 + '%';
+  const names = { q: 'Queen', r: 'Rook', b: 'Bishop', n: 'Knight' };
+  for (const t of ['q', 'r', 'b', 'n']) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'promo-btn'; b.setAttribute('aria-label', `Promote to ${names[t]}`);
+    b.title = names[t]; b.appendChild(pieceImg(game.color, t));
+    b.addEventListener('click', (e) => { e.stopPropagation(); closePromo(); done(t); });
+    col.appendChild(b);
   }
+  box.appendChild(col);
+  box.onclick = () => { closePromo(); render(); };   // click outside = cancel
+  box.classList.remove('hidden'); promoOpen = true;
+  col.firstChild.focus();
+}
+
+/* ---------- moving and premoves ---------- */
+const isPromotion = (from, to) => {
+  const p = game.chess.get(from);
+  return !!p && p.type === 'p' && p.color === game.color && to[1] === (p.color === 'w' ? '8' : '1');
+};
+function sendMove(from, to, promotion) {
+  game.sending = true;
+  socket.emit('move', { gameId: game.id, from, to, promotion }, (res) => {
+    if (game && !(res && res.ok)) { game.sending = false; render(); } // rejected: let the player try again
+  });
+}
+// Squares a piece could reach if the position stays as it is now. Deliberately loose (own pieces count as
+// targets, so you can queue a recapture); the move is checked for real when it is time to play it.
+function premoveTargets(from) {
+  const p = game.chess.get(from); if (!p) return [];
+  const f = FILES.indexOf(from[0]), r = +from[1], res = new Set();
+  const add = (cf, cr) => { if (cf < 0 || cf > 7 || cr < 1 || cr > 8) return false; res.add(FILES[cf] + cr); return true; };
+  const ray = (df, dr) => { for (let i = 1; add(f + df * i, r + dr * i); i++) if (game.chess.get(FILES[f + df * i] + (r + dr * i))) break; };
+  const KN = [[1, 2], [2, 1], [-1, 2], [-2, 1], [1, -2], [2, -1], [-1, -2], [-2, -1]];
+  const ORTH = [[1, 0], [-1, 0], [0, 1], [0, -1]], DIAG = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
+  if (p.type === 'n') KN.forEach(([a, b]) => add(f + a, r + b));
+  else if (p.type === 'k') {
+    [...ORTH, ...DIAG].forEach(([a, b]) => add(f + a, r + b));
+    if (from === (p.color === 'w' ? 'e1' : 'e8')) { add(f + 2, r); add(f - 2, r); } // castling
+  } else if (p.type === 'p') {
+    const d = p.color === 'w' ? 1 : -1;
+    if (!game.chess.get(from[0] + (r + d))) {
+      add(f, r + d);
+      if (r === (p.color === 'w' ? 2 : 7) && !game.chess.get(from[0] + (r + 2 * d))) add(f, r + 2 * d);
+    }
+    add(f - 1, r + d); add(f + 1, r + d);
+  } else {
+    if (p.type !== 'b') ORTH.forEach(([a, b]) => ray(a, b));
+    if (p.type !== 'r') DIAG.forEach(([a, b]) => ray(a, b));
+  }
+  res.delete(from);
+  return [...res];
+}
+function setPremove(from, to, promotion) {
+  game.pre = { from, to, promotion: promotion || null };
+  selected = null; targets = []; render();
+}
+function cancelPremove() {
+  if (!game || !game.pre) return;
+  game.pre = null; render();
+}
+// Called when the opponent's move arrives: play the queued move if it is legal now, otherwise drop it.
+function runPremove() {
+  const pre = game.pre; game.pre = null;
+  if (!pre || game.over || game.chess.turn() !== game.color) return;
+  const legal = game.chess.moves({ square: pre.from, verbose: true })
+    .some((m) => m.to === pre.to && (!m.promotion || m.promotion === (pre.promotion || 'q')));
+  if (legal) sendMove(pre.from, pre.to, pre.promotion || 'q');
+  else $('#drawNote').textContent = 'Premove cancelled: it was no longer legal.';
+}
+function paintPremove() {
+  const bar = $('#preBar'), pre = game && !game.over && game.pre;
+  bar.classList.toggle('hidden', !pre);
+  if (pre) $('#preText').textContent = `Premove: ${pre.from} → ${pre.to}`;
+}
+
+function onSquare(sq) {
+  if (!game || game.over || game.sending || promoOpen) return;
+  const myTurn = game.chess.turn() === game.color;
   const piece = game.chess.get(sq);
-  if (piece && piece.color === game.color) { selected = sq; targets = game.chess.moves({ square: sq, verbose: true }).map((m) => m.to); }
-  else { selected = null; targets = []; }
+  if (selected && targets.includes(sq)) {
+    const from = selected;
+    const go = (promo) => (myTurn ? sendMove(from, sq, promo) : setPremove(from, sq, promo));
+    selected = null; targets = [];
+    if (isPromotion(from, sq)) { render(); return askPromotion(from, sq, go); }
+    return go();
+  }
+  if (piece && piece.color === game.color) {
+    selected = sq;
+    targets = myTurn ? game.chess.moves({ square: sq, verbose: true }).map((m) => m.to) : premoveTargets(sq);
+  } else {
+    selected = null; targets = [];
+    if (!myTurn && game.pre) game.pre = null; // tapping an empty square cancels a queued premove
+  }
   render();
 }
+// Esc backs out of the picker, then a selection, then a queued premove. Right-click cancels a premove.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !game) return;
+  if (promoOpen) { closePromo(); render(); } else if (selected) { selected = null; targets = []; render(); } else cancelPremove();
+});
+$('#board').addEventListener('contextmenu', (e) => { e.preventDefault(); if (game) { selected = null; targets = []; game.pre = null; render(); } });
 render(); paintPlayers();
 </script>
 </body>

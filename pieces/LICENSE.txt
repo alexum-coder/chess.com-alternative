@@ -1,0 +1,7 @@
+Zugzwang piece set (wK wQ wR wB wN wP, bK bQ bR bB bN bP)
+
+Original artwork created for this project and dedicated to the public domain
+under CC0 1.0 Universal: https://creativecommons.org/publicdomain/zero/1.0/
+You may copy, modify and use these files for any purpose, with no attribution.
+
+To swap in a different CC0 set, keep the same file names (e.g. wK.svg, bN.svg).

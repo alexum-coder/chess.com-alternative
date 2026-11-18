@@ -142,8 +142,23 @@ function snapshot(g, color) {
     gameId: g.id, color, fen: g.chess.fen(), clock: g.clock, elapsed: Date.now() - g.turnStart,
     turn: g.chess.turn(), started: g.started, inc: g.inc, base: g.base,
     moves: hist.map((m) => m.san), last: last ? [last.from, last.to] : null,
-    white: info(g.white), black: info(g.black)
+    white: info(g.white), black: info(g.black),
+    draw: g.draw ? g.draw.by : null,
+    drawLockedUntil: g.drawLock[color] // ply number from which this player may offer again
   };
+}
+
+/* ---------- draw offers ---------- */
+const DRAW_MIN_PLY = 2;        // no offers before each side has moved once
+const DRAW_COOLDOWN_PLY = 4;   // after offering, wait 2 of your own moves (4 plies) before offering again
+const DRAW_MAX_OFFERS = 3;     // per player, per game
+const sideOf = (g, sid) => (g.white.sid === sid ? 'w' : g.black.sid === sid ? 'b' : null);
+const ply = (g) => g.chess.history().length;
+function clearDraw(g, reason) {
+  if (!g.draw) return;
+  const by = g.draw.by;
+  g.draw = null;
+  io.to(g.id).emit('drawCleared', { by, reason });
 }
 const activeGameFor = (pid) => [...games.values()].find((g) => !g.over && (g.white.pid === pid || g.black.pid === pid));
 
@@ -163,7 +178,10 @@ function startGame(a, b, base, inc) {
     white, black, inc, base,
     clock: { w: base * 1000, b: base * 1000 },
     turnStart: Date.now(),
-    started: true, over: false
+    started: true, over: false,
+    draw: null,                       // { by: 'w' | 'b' } while an offer is pending
+    drawLock: { w: DRAW_MIN_PLY, b: DRAW_MIN_PLY }, // earliest ply at which each side may offer
+    drawCount: { w: 0, b: 0 }
   };
   games.set(g.id, g);
   for (const p of [white, black]) io.sockets.sockets.get(p.sid)?.join(g.id);
@@ -219,21 +237,32 @@ io.on('connection', (socket) => {
     for (const [k, v] of queues) if (v.sid === socket.id) queues.delete(k);
   });
 
-  socket.on('move', ({ gameId, from, to, promotion }) => {
+  // `ack` is optional: clients use it to learn whether the move was accepted.
+  socket.on('move', ({ gameId, from, to, promotion } = {}, ack) => {
+    const reply = typeof ack === 'function' ? ack : () => {};
     const g = games.get(gameId);
-    if (!g || g.over) return;
+    if (!g || g.over) return reply({ ok: false });
     const side = g.chess.turn();
     const player = side === 'w' ? g.white : g.black;
-    if (player.sid !== socket.id) return;
+    if (player.sid !== socket.id) return reply({ ok: false });
 
     const now = Date.now();
-    if (g.started) g.clock[side] -= now - g.turnStart;
-    if (g.clock[side] <= 0) return endGame(g, side === 'w' ? '0-1' : '1-0', 'timeout');
+    const spent = g.started ? now - g.turnStart : 0;
+    if (g.clock[side] - spent <= 0) { g.clock[side] = 0; return endGame(g, side === 'w' ? '0-1' : '1-0', 'timeout'); }
 
+    // Only Queen, Rook, Bishop or Knight are valid; anything else falls back to Queen.
+    const promo = typeof promotion === 'string' && 'qrbn'.includes(promotion.toLowerCase()) && promotion.length === 1
+      ? promotion.toLowerCase() : 'q';
+    // Validate before touching the clock, so an illegal attempt never costs time.
     let mv;
-    try { mv = g.chess.move({ from, to, promotion: promotion || 'q' }); } catch { return; }
+    try { mv = g.chess.move({ from, to, promotion: promo }); } catch { return reply({ ok: false }); }
+    g.clock[side] -= spent;
     if (g.started) g.clock[side] += g.inc * 1000;
     g.turnStart = now;
+    reply({ ok: true });
+
+    // A draw offer lapses when the player it was made to moves instead of answering.
+    if (g.draw && g.draw.by !== side) clearDraw(g, 'ignored');
 
     io.to(g.id).emit('state', {
       fen: g.chess.fen(), san: mv.san, from: mv.from, to: mv.to,
@@ -246,6 +275,44 @@ io.on('connection', (socket) => {
     if (g.chess.isThreefoldRepetition()) return endGame(g, '1/2-1/2', 'repetition');
     if (g.chess.isDraw()) return endGame(g, '1/2-1/2', 'draw');
     if (g.started) scheduleTimeout(g); else clearTimeout(g.timer);
+  });
+
+  socket.on('drawOffer', ({ gameId } = {}) => {
+    const g = games.get(gameId);
+    if (!g || g.over) return;
+    const me = sideOf(g, socket.id);
+    if (!me) return;
+    const err = (text) => socket.emit('drawError', { text, lockedUntil: g.drawLock[me] });
+    // If the opponent already offered, offering back simply accepts.
+    if (g.draw && g.draw.by !== me) return endGame(g, '1/2-1/2', 'agreement');
+    if (g.draw) return err('You already offered a draw.');
+    if (ply(g) < DRAW_MIN_PLY) return err('You can offer a draw after the first moves.');
+    if (g.drawCount[me] >= DRAW_MAX_OFFERS) return err(`You have used all ${DRAW_MAX_OFFERS} draw offers for this game.`);
+    if (ply(g) < g.drawLock[me]) return err('Make a couple more moves before offering a draw again.');
+    g.drawCount[me]++;
+    g.drawLock[me] = ply(g) + DRAW_COOLDOWN_PLY;
+    g.draw = { by: me };
+    io.to(g.id).emit('drawOffer', { by: me, lockedUntil: g.drawLock[me] });
+  });
+
+  socket.on('drawAccept', ({ gameId } = {}) => {
+    const g = games.get(gameId);
+    if (!g || g.over || !g.draw) return;
+    const me = sideOf(g, socket.id);
+    if (me && g.draw.by !== me) endGame(g, '1/2-1/2', 'agreement');
+  });
+
+  socket.on('drawDecline', ({ gameId } = {}) => {
+    const g = games.get(gameId);
+    if (!g || g.over || !g.draw) return;
+    const me = sideOf(g, socket.id);
+    if (me && g.draw.by !== me) clearDraw(g, 'declined');
+  });
+
+  socket.on('drawCancel', ({ gameId } = {}) => {
+    const g = games.get(gameId);
+    if (!g || g.over || !g.draw) return;
+    if (sideOf(g, socket.id) === g.draw.by) clearDraw(g, 'cancelled');
   });
 
   socket.on('resign', ({ gameId }) => {

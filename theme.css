@@ -4,6 +4,7 @@
   --light: #c5d2dc; --dark: #566d84; --accent: #f2b84b;
   --win: #7bd88f; --loss: #ff8f8f; --err: #ff8f8f;
   --last: rgba(242,184,75,.5); --dot: rgba(16,22,29,.32);
+  --pre: rgba(70,130,255,.5); --pre-dot: rgba(40,90,220,.55);
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
