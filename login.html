@@ -156,7 +156,7 @@ $('#form').addEventListener('submit', async (e) => {
     } else if (mode === 'signup') {
       const { data: taken } = await sb.from('profiles').select('id').ilike('username', user).limit(1);
       if (taken && taken.length) throw new Error('That username is taken. Try another.');
-      const { data, error } = await sb.auth.signUp({ email, password: pw, options: { data: { username: user } } });
+      const { data, error } = await sb.auth.signUp({ email, password: pw, options: { data: { username: user }, emailRedirectTo: location.origin + '/login.html' } });
       if (error) throw error;
       if (data.session) go();
       else msg('Account created. Check your email for a confirmation link, then log in.', 'ok');
