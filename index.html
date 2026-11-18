@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Open Chess</title>
+<title>Zugzwang: free online chess</title>
 <style>
   :root {
     --bg: #1b2430; --panel: #243142; --ink: #e9eef3; --muted: #8fa1b3;
@@ -33,9 +33,7 @@
   .sq.sel { outline: 3px solid var(--accent); outline-offset: -3px; }
   .sq.target::after { content: ""; width: 28%; height: 28%; border-radius: 50%; background: var(--dot); position: absolute; }
   .sq.target.cap::after { width: 86%; height: 86%; background: none; border: 4px solid var(--dot); }
-  .pc { position: relative; z-index: 1; }
-  .pc.w { color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000, 0 1px 3px #000; }
-  .pc.b { color: #151b23; text-shadow: 0 0 1px #fff; }
+  .pc { position: relative; z-index: 1; width: 100%; height: 100%; pointer-events: none; }
   .panel { background: var(--panel); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
   .panel h2 { margin: 0 0 10px; font-size: 1rem; }
   label { display: block; color: var(--muted); font-size: .85rem; margin-bottom: 4px; }
@@ -52,6 +50,11 @@
     display: grid; grid-template-columns: 2.5rem 1fr 1fr; gap: 2px 8px; }
   #moves .n { color: var(--muted); }
   #status { min-height: 1.5em; color: var(--accent); }
+  .stack > * { margin-bottom: 8px; }
+  .row { display: flex; gap: 8px; } .row button { flex: 1; }
+  .msg { color: var(--accent); font-size: .85rem; min-height: 1.2em; margin: 0; }
+  ol.lb { margin: 0; padding-left: 1.4rem; } ol.lb li { margin: 2px 0; }
+  ol.lb span { color: var(--muted); float: right; }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -64,13 +67,25 @@
   </section>
 
   <aside>
-    <h1>Open Chess</h1>
+    <h1>Zugzwang</h1>
     <p class="sub">Free, real-time chess against a live opponent.</p>
+
+    <div class="panel stack" id="auth">
+      <h2>Account</h2>
+      <div id="authOut">
+        <input id="email" type="email" placeholder="Email" autocomplete="email">
+        <input id="password" type="password" placeholder="Password (6+ characters)" autocomplete="current-password">
+        <input id="username" maxlength="16" placeholder="Username (for sign up)">
+        <div class="row"><button id="login" class="primary">Log in</button><button id="signup">Sign up</button></div>
+      </div>
+      <div id="authIn" class="hidden"><span id="who"></span> <button id="logout">Log out</button></div>
+      <p class="msg" id="authMsg"></p>
+    </div>
 
     <div class="panel" id="lobby">
       <h2>Find a game</h2>
-      <label for="name">Display name</label>
-      <input id="name" maxlength="20" placeholder="Guest">
+      <div id="nameWrap"><label for="name">Guest display name</label>
+      <input id="name" maxlength="20" placeholder="Guest"></div>
       <div class="modes">
         <button data-b="60" data-i="0"><b>1 min</b><span>Bullet</span></button>
         <button data-b="180" data-i="2"><b>3 + 2</b><span>Blitz</span></button>
@@ -89,15 +104,17 @@
       <button id="resign">Resign</button>
       <button id="again" class="primary hidden">Play again</button>
     </div>
+    <div class="panel"><h2>Top players</h2><ol class="lb" id="lb"></ol></div>
     <p class="sub" id="me"></p>
   </aside>
 </main>
 
 <script src="/socket.io/socket.io.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.js"></script>
+<script src="/config.js"></script>
 <script type="module">
 import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.0.0/+esm';
 
-const GLYPH = { p: '♟︎', n: '♞', b: '♝', r: '♜', q: '♛', k: '♚' };
 const $ = (s) => document.querySelector(s);
 const socket = io();
 
@@ -108,9 +125,50 @@ $('#name').value = localStorage.getItem('name') || '';
 let game = null;     // { id, color, chess, clock, turn, started, last, over, names }
 let selected = null, targets = [], tick = null;
 
-const hello = () => socket.emit('hello', { id: pid, name: $('#name').value.trim() || 'Guest' });
+const cfg = window.ZZ_CONFIG || {};
+const sb = cfg.url && window.supabase ? window.supabase.createClient(cfg.url, cfg.anonKey) : null;
+let token = null, myName = null;
+
+const hello = () => socket.emit('hello', { id: pid, name: $('#name').value.trim() || 'Guest', token });
 socket.on('connect', hello);
-socket.on('me', (m) => { $('#me').textContent = `${m.name} · rating ${m.rating}`; });
+socket.on('me', (m) => { myName = m.name; $('#me').textContent = `${m.name} · rating ${m.rating}${m.authed ? '' : ' (guest, not saved)'}`; updateAuthUI(); });
+socket.on('autherror', (t) => { $('#authMsg').textContent = t; token = null; sb?.auth.signOut(); });
+
+function updateAuthUI() {
+  $('#auth').classList.toggle('hidden', !sb);
+  $('#authOut').classList.toggle('hidden', !!token);
+  $('#authIn').classList.toggle('hidden', !token);
+  $('#nameWrap').classList.toggle('hidden', !!token);
+  $('#who').textContent = myName ? `Signed in as ${myName}. ` : 'Signed in. ';
+}
+async function loadBoard() {
+  try {
+    const rows = await (await fetch('/api/leaderboard')).json();
+    $('#lb').innerHTML = rows.length
+      ? rows.map((r) => `<li>${r.username.replace(/[<>&]/g, '')}<span>${r.rating}</span></li>`).join('')
+      : '<li style="list-style:none;color:var(--muted)">Play a rated game to appear here.</li>';
+  } catch {}
+}
+loadBoard();
+
+if (sb) {
+  sb.auth.getSession().then(({ data }) => { token = data.session?.access_token || null; updateAuthUI(); hello(); });
+  sb.auth.onAuthStateChange((_e, s) => { token = s?.access_token || null; updateAuthUI(); hello(); });
+  const creds = () => ({ email: $('#email').value.trim(), password: $('#password').value });
+  $('#login').addEventListener('click', async () => {
+    $('#authMsg').textContent = '';
+    const { error } = await sb.auth.signInWithPassword(creds());
+    if (error) $('#authMsg').textContent = error.message;
+  });
+  $('#signup').addEventListener('click', async () => {
+    $('#authMsg').textContent = '';
+    const { data, error } = await sb.auth.signUp({ ...creds(), options: { data: { username: $('#username').value.trim() } } });
+    if (error) $('#authMsg').textContent = error.message;
+    else if (!data.session) $('#authMsg').textContent = 'Check your email to confirm, then log in.';
+  });
+  $('#logout').addEventListener('click', () => sb.auth.signOut());
+}
+updateAuthUI();
 $('#name').addEventListener('change', () => { localStorage.setItem('name', $('#name').value); hello(); });
 
 document.querySelectorAll('.modes button').forEach((b) =>
@@ -126,7 +184,7 @@ socket.on('waiting', () => $('#cancel').classList.remove('hidden'));
 
 socket.on('start', (s) => {
   game = { id: s.gameId, color: s.color, chess: new Chess(s.fen), clock: s.clock, turn: 'w',
-    started: false, last: null, over: false, stamp: Date.now(), moves: [] };
+    started: true, last: null, over: false, stamp: Date.now(), moves: [] };
   const me = s.color === 'w' ? s.white : s.black, opp = s.color === 'w' ? s.black : s.white;
   $('#botName').innerHTML = `${me.name} <small>${me.rating}</small>`;
   $('#topName').innerHTML = `${opp.name} <small>${opp.rating}</small>`;
@@ -157,7 +215,7 @@ socket.on('over', (o) => {
   const dw = game.color === 'w' ? o.ratings.dw : -o.ratings.dw;
   $('#status').textContent = `${text} by ${o.reason}. Rating ${dw >= 0 ? '+' : ''}${dw}.`;
   $('#resign').classList.add('hidden'); $('#again').classList.remove('hidden');
-  hello(); render();
+  hello(); render(); setTimeout(loadBoard, 1500);
 });
 
 function fmt(ms) {
@@ -191,7 +249,7 @@ function render() {
     if (game.last?.includes(name)) el.classList.add('last');
     if (selected === name) el.classList.add('sel');
     if (targets.includes(name)) { el.classList.add('target'); if (p) el.classList.add('cap'); }
-    if (p) el.innerHTML = `<span class="pc ${p.color}">${GLYPH[p.type]}</span>`;
+    if (p) el.innerHTML = `<img class="pc" draggable="false" alt="" src="/pieces/${p.color}${p.type.toUpperCase()}.svg">`;
     el.addEventListener('click', () => onSquare(name));
     el.addEventListener('keydown', (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onSquare(name)));
     boardEl.appendChild(el);

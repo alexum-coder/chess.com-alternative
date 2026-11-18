@@ -1,8 +1,15 @@
+require('dotenv').config();
 const express = require('express');
+const { createClient } = require('@supabase/supabase-js');
 const http = require('http');
 const { Server } = require('socket.io');
 const { Chess } = require('chess.js');
 const crypto = require('crypto');
+
+const db = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY
+  ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false } })
+  : null;
+console.log(db ? 'Supabase connected: accounts and saved ratings are ON' : 'No Supabase config: guest-only mode');
 
 const app = express();
 const server = http.createServer(app);
@@ -11,6 +18,18 @@ const path = require('path');
 const fs = require('fs');
 // Serve index.html from ./public, or from the same folder if it was downloaded without the folder.
 const pub = fs.existsSync(path.join(__dirname, 'public', 'index.html')) ? path.join(__dirname, 'public') : __dirname;
+app.get('/config.js', (req, res) => {
+  res.type('js').send('window.ZZ_CONFIG=' + JSON.stringify({
+    url: db ? process.env.SUPABASE_URL : null,
+    anonKey: db ? process.env.SUPABASE_ANON_KEY : null
+  }) + ';');
+});
+app.get('/api/leaderboard', async (req, res) => {
+  if (!db) return res.json([]);
+  const { data } = await db.from('profiles').select('username,rating,games_played')
+    .gt('games_played', 0).order('rating', { ascending: false }).limit(10);
+  res.json(data || []);
+});
 app.get('/', (req, res) => res.sendFile(path.join(pub, 'index.html')));
 app.use(express.static(pub, { index: false }));
 console.log('Serving client from', pub);
@@ -19,6 +38,21 @@ console.log('Serving client from', pub);
 const users = new Map();   // playerId -> { name, rating }
 const queues = new Map();  // "base+inc" -> waiting seeker { sid, pid }
 const games = new Map();   // gameId -> game
+
+async function persist(g, w, b, result, reason, pgn) {
+  if (!db) return;
+  try {
+    for (const [p, u] of [[g.white, w], [g.black, b]]) {
+      if (!u.authed) continue;
+      u.games = (u.games || 0) + 1;
+      await db.from('profiles').update({ rating: u.rating, games_played: u.games }).eq('id', p.pid);
+    }
+    await db.from('games').insert({
+      id: g.id, white: w.authed ? g.white.pid : null, black: b.authed ? g.black.pid : null,
+      white_name: w.name, black_name: b.name, result, reason, pgn, base: g.base, inc: g.inc
+    });
+  } catch (e) { console.error('persist failed', e.message); }
+}
 
 const K = 32;
 const expected = (a, b) => 1 / (1 + 10 ** ((b - a) / 400));
@@ -33,6 +67,7 @@ function endGame(g, result, reason) {
   const dw = Math.round(K * (sw - ew));
   w.rating += dw;
   b.rating -= dw;
+  persist(g, w, b, result, reason, g.chess.pgn());
   io.to(g.id).emit('over', {
     result, reason,
     ratings: { w: w.rating, b: b.rating, dw }
@@ -53,10 +88,10 @@ function startGame(a, b, base, inc) {
   const g = {
     id: crypto.randomBytes(5).toString('hex'),
     chess: new Chess(),
-    white, black, inc,
+    white, black, inc, base,
     clock: { w: base * 1000, b: base * 1000 },
     turnStart: Date.now(),
-    started: false, over: false
+    started: true, over: false
   };
   games.set(g.id, g);
   for (const p of [white, black]) io.sockets.sockets.get(p.sid)?.join(g.id);
@@ -73,14 +108,36 @@ function startGame(a, b, base, inc) {
 io.on('connection', (socket) => {
   let pid = null;
 
-  socket.on('hello', ({ id, name }) => {
-    pid = String(id || '').slice(0, 40) || crypto.randomUUID();
-    if (!users.has(pid)) {
-      users.set(pid, { name: String(name || 'Guest').slice(0, 20), rating: 1200 });
-    } else if (name) {
-      users.get(pid).name = String(name).slice(0, 20);
+  socket.on('hello', async ({ id, name, token }) => {
+    try {
+      if (token && db) {
+        const { data, error } = await db.auth.getUser(token);
+        if (error || !data.user) throw new Error('invalid session');
+        const u = data.user;
+        pid = u.id;
+        if (!users.get(pid)?.authed) {
+          let { data: prof } = await db.from('profiles').select('*').eq('id', u.id).maybeSingle();
+          if (!prof) {
+            const base = String(u.user_metadata?.username || (u.email || 'player').split('@')[0])
+              .replace(/[^\w]/g, '').slice(0, 16) || 'player';
+            for (let i = 0; i < 5 && !prof; i++) {
+              const username = i === 0 ? base : base + Math.floor(1000 + Math.random() * 9000);
+              const r = await db.from('profiles').insert({ id: u.id, username }).select().single();
+              if (!r.error) prof = r.data;
+            }
+          }
+          users.set(pid, { name: prof.username, rating: prof.rating, games: prof.games_played, authed: true });
+        }
+      } else {
+        // Guests get a "g:" prefix so they can never collide with real account ids.
+        pid = 'g:' + String(id || crypto.randomUUID()).slice(0, 40);
+        if (!users.has(pid)) users.set(pid, { name: String(name || 'Guest').slice(0, 20), rating: 1200 });
+        else if (name) users.get(pid).name = String(name).slice(0, 20);
+      }
+      socket.emit('me', { id: pid, ...users.get(pid) });
+    } catch (e) {
+      socket.emit('autherror', 'Session expired. Please log in again.');
     }
-    socket.emit('me', { id: pid, ...users.get(pid) });
   });
 
   socket.on('seek', ({ base, inc }) => {
@@ -110,14 +167,12 @@ io.on('connection', (socket) => {
     if (player.sid !== socket.id) return;
 
     const now = Date.now();
-    // Clock starts ticking only after White's first move (like real chess sites).
     if (g.started) g.clock[side] -= now - g.turnStart;
     if (g.clock[side] <= 0) return endGame(g, side === 'w' ? '0-1' : '1-0', 'timeout');
 
     let mv;
     try { mv = g.chess.move({ from, to, promotion: promotion || 'q' }); } catch { return; }
     if (g.started) g.clock[side] += g.inc * 1000;
-    if (g.chess.history().length >= 2) g.started = true;
     g.turnStart = now;
 
     io.to(g.id).emit('state', {

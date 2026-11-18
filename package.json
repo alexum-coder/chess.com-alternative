@@ -1,10 +1,12 @@
 {
-  "name": "open-chess",
+  "name": "zugzwang",
   "version": "0.1.0",
   "private": true,
   "scripts": { "start": "node server.js" },
   "engines": { "node": ">=18" },
   "dependencies": {
+    "@supabase/supabase-js": "2.45.0",
+    "dotenv": "16.4.5",
     "chess.js": "1.0.0",
     "express": "4.19.2",
     "socket.io": "4.7.5"
