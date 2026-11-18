@@ -70,14 +70,7 @@
   </section>
 
   <aside>
-    <h1>Zugzwang</h1>
     <p class="sub">Free, real-time chess against a live opponent.</p>
-
-    <div class="panel" id="auth">
-      <div id="authOut"><a class="btn" href="/login.html">Log in or sign up</a>
-        <p class="sub" style="margin:8px 0 0">Save your rating and game history. Or just play as a guest below.</p></div>
-      <div id="authIn" class="hidden"><span id="who"></span> <button id="logout">Log out</button></div>
-    </div>
 
     <div class="panel" id="lobby">
       <h2>Find a game</h2>
@@ -109,6 +102,7 @@
 <script src="/socket.io/socket.io.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
 <script src="/config.js"></script>
+<script src="/nav.js"></script>
 <script type="module">
 import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.0.0/+esm';
 
@@ -122,8 +116,7 @@ $('#name').value = localStorage.getItem('name') || '';
 let game = null;     // { id, color, chess, clock, turn, started, last, over, names }
 let selected = null, targets = [], tick = null;
 
-const cfg = window.ZZ_CONFIG || {};
-const sb = cfg.url && window.supabase ? window.supabase.createClient(cfg.url, cfg.anonKey) : null;
+const sb = window.ZZ?.sb || null;
 let token = null, myName = null;
 
 const hello = () => socket.emit('hello', { id: pid, name: $('#name').value.trim() || 'Guest', token });
@@ -131,13 +124,7 @@ socket.on('connect', hello);
 socket.on('me', (m) => { myName = m.name; $('#me').textContent = `${m.name} · rating ${m.rating}${m.authed ? '' : ' (guest, not saved)'}`; updateAuthUI(); });
 socket.on('autherror', (t) => { $('#me').textContent = t; token = null; sb?.auth.signOut(); });
 
-function updateAuthUI() {
-  $('#auth').classList.toggle('hidden', !sb);
-  $('#authOut').classList.toggle('hidden', !!token);
-  $('#authIn').classList.toggle('hidden', !token);
-  $('#nameWrap').classList.toggle('hidden', !!token);
-  $('#who').textContent = myName ? `Signed in as ${myName}. ` : 'Signed in. ';
-}
+function updateAuthUI() { $('#nameWrap').classList.toggle('hidden', !!token); }
 async function loadBoard() {
   try {
     const rows = await (await fetch('/api/leaderboard')).json();
@@ -149,9 +136,9 @@ async function loadBoard() {
 loadBoard();
 
 if (sb) {
-  sb.auth.getSession().then(({ data }) => { token = data.session?.access_token || null; updateAuthUI(); hello(); });
-  sb.auth.onAuthStateChange((_e, s) => { token = s?.access_token || null; updateAuthUI(); hello(); });
-  $('#logout').addEventListener('click', () => sb.auth.signOut());
+  const sync = () => { token = ZZ.session?.access_token || null; updateAuthUI(); hello(); };
+  ZZ.ready.then(sync);
+  window.addEventListener('zz:auth', sync);
 }
 updateAuthUI();
 $('#name').addEventListener('change', () => { localStorage.setItem('name', $('#name').value); hello(); });

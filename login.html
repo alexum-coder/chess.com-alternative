@@ -86,7 +86,6 @@
       <p class="msg" id="msg" role="alert" aria-live="polite"></p>
     </form>
 
-    <div class="alt" data-m="login"><button class="link" id="toForgot">Forgot your password?</button></div>
     <div class="alt" data-m="forgot reset"><button class="link" id="toLogin">Back to log in</button></div>
     <div class="alt"><a href="/">Skip and play as a guest</a></div>
     <p class="msg err hidden" id="setup">Accounts aren't set up on this server yet, so you can only play as a guest.</p>
@@ -120,11 +119,12 @@ function setMode(m) {
   $('#pwLabel').textContent = m === 'reset' ? 'New password' : 'Password';
 }
 function msg(t, kind = 'err') { const e = $('#msg'); e.textContent = t; e.className = 'msg ' + (t ? kind : ''); }
-const go = () => { location.replace('/'); };
+const nextParam = new URLSearchParams(location.search).get('next');
+const dest = nextParam && /^\/[^\/\\]/.test(nextParam) ? nextParam : '/';
+const go = () => { location.replace(dest); };
 
 $('#tabLogin').onclick = () => setMode('login');
 $('#tabSignup').onclick = () => setMode('signup');
-$('#toForgot').onclick = () => setMode('forgot');
 $('#toLogin').onclick = () => setMode('login');
 $('#showpw').onchange = (e) => { for (const id of ['#password', '#confirm']) $(id).type = e.target.checked ? 'text' : 'password'; };
 
@@ -154,7 +154,7 @@ $('#form').addEventListener('submit', async (e) => {
       const { error } = await sb.auth.signInWithPassword({ email, password: pw });
       if (error) throw error; go();
     } else if (mode === 'signup') {
-      const { data: taken } = await sb.from('profiles').select('id').ilike('username', user).limit(1);
+      const { data: taken } = await sb.from('profiles').select('id').ilike('username', user.replace(/_/g, '\\_')).limit(1);
       if (taken && taken.length) throw new Error('That username is taken. Try another.');
       const { data, error } = await sb.auth.signUp({ email, password: pw, options: { data: { username: user }, emailRedirectTo: location.origin + '/login.html' } });
       if (error) throw error;

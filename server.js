@@ -30,6 +30,49 @@ app.get('/api/leaderboard', async (req, res) => {
     .gt('games_played', 0).order('rating', { ascending: false }).limit(10);
   res.json(data || []);
 });
+
+// Loads (or creates) the profile for a Supabase session token and caches it.
+async function accountFor(token) {
+  const { data, error } = await db.auth.getUser(token);
+  if (error || !data.user) throw new Error('invalid session');
+  const u = data.user;
+  if (!users.get(u.id)?.authed) {
+    let { data: prof } = await db.from('profiles').select('*').eq('id', u.id).maybeSingle();
+    if (!prof) {
+      const base = String(u.user_metadata?.username || (u.email || 'player').split('@')[0])
+        .replace(/[^\w]/g, '').slice(0, 16) || 'player';
+      for (let i = 0; i < 5 && !prof; i++) {
+        const username = i === 0 ? base : base + Math.floor(1000 + Math.random() * 9000);
+        const r = await db.from('profiles').insert({ id: u.id, username }).select().single();
+        if (!r.error) prof = r.data;
+      }
+    }
+    users.set(u.id, { name: prof.username, rating: prof.rating, games: prof.games_played, since: prof.created_at, authed: true });
+  }
+  return { id: u.id, ...users.get(u.id) };
+}
+const bearer = (req) => (req.headers.authorization || '').replace(/^Bearer /, '');
+
+app.use(express.json());
+app.get('/api/me', async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Accounts are not set up.' });
+  try { res.json(await accountFor(bearer(req))); }
+  catch { res.status(401).json({ error: 'Please log in again.' }); }
+});
+app.post('/api/username', async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Accounts are not set up.' });
+  let acct;
+  try { acct = await accountFor(bearer(req)); } catch { return res.status(401).json({ error: 'Please log in again.' }); }
+  const name = String(req.body?.username || '').trim();
+  if (!/^\w{3,16}$/.test(name)) return res.status(400).json({ error: 'Username must be 3 to 16 letters, numbers or underscores.' });
+  const { data: taken } = await db.from('profiles').select('id').ilike('username', name.replace(/_/g, '\\_')).neq('id', acct.id).limit(1);
+  if (taken && taken.length) return res.status(409).json({ error: 'That username is taken.' });
+  const { error } = await db.from('profiles').update({ username: name }).eq('id', acct.id);
+  if (error) return res.status(500).json({ error: 'Could not save. Try again.' });
+  users.get(acct.id).name = name;
+  res.json({ username: name });
+});
+
 app.get('/', (req, res) => res.sendFile(path.join(pub, 'index.html')));
 app.use(express.static(pub, { index: false }));
 console.log('Serving client from', pub);
@@ -111,23 +154,8 @@ io.on('connection', (socket) => {
   socket.on('hello', async ({ id, name, token }) => {
     try {
       if (token && db) {
-        const { data, error } = await db.auth.getUser(token);
-        if (error || !data.user) throw new Error('invalid session');
-        const u = data.user;
-        pid = u.id;
-        if (!users.get(pid)?.authed) {
-          let { data: prof } = await db.from('profiles').select('*').eq('id', u.id).maybeSingle();
-          if (!prof) {
-            const base = String(u.user_metadata?.username || (u.email || 'player').split('@')[0])
-              .replace(/[^\w]/g, '').slice(0, 16) || 'player';
-            for (let i = 0; i < 5 && !prof; i++) {
-              const username = i === 0 ? base : base + Math.floor(1000 + Math.random() * 9000);
-              const r = await db.from('profiles').insert({ id: u.id, username }).select().single();
-              if (!r.error) prof = r.data;
-            }
-          }
-          users.set(pid, { name: prof.username, rating: prof.rating, games: prof.games_played, authed: true });
-        }
+        const a = await accountFor(token);
+        pid = a.id;
       } else {
         // Guests get a "g:" prefix so they can never collide with real account ids.
         pid = 'g:' + String(id || crypto.randomUUID()).slice(0, 40);

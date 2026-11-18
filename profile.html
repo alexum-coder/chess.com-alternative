@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your profile · Zugzwang</title>
+<style>
+  :root { --bg:#1b2430; --panel:#243142; --ink:#e9eef3; --muted:#8fa1b3; --accent:#f2b84b; --line:#3a4b61;
+    --win:#7bd88f; --loss:#ff8f8f; color-scheme: dark; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:980px; margin:0 auto; padding:20px 16px 48px; }
+  .panel { background:var(--panel); border-radius:8px; padding:20px; margin-bottom:16px; }
+  .panel h2 { margin:0 0 12px; font-size:1rem; }
+  .hero { display:flex; justify-content:space-between; align-items:flex-end; gap:16px; flex-wrap:wrap; }
+  h1 { margin:0; font-size:2rem; letter-spacing:-.02em; line-height:1.1; overflow-wrap:anywhere; }
+  .sub { color:var(--muted); margin:4px 0 0; }
+  .rating { text-align:right; }
+  .rating b { display:block; font-size:3.4rem; line-height:1; letter-spacing:-.03em; color:var(--accent); }
+  .rating span { color:var(--muted); font-size:.9rem; }
+  .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px; }
+  @media (max-width:560px){ .stats{ grid-template-columns:repeat(2,1fr); } }
+  .stat { background:var(--panel); border-radius:8px; padding:14px 16px; }
+  .stat b { display:block; font-size:1.6rem; line-height:1.2; }
+  .stat span { color:var(--muted); font-size:.85rem; }
+  form { display:flex; gap:8px; flex-wrap:wrap; }
+  input { flex:1; min-width:180px; padding:9px 12px; border-radius:6px; border:1px solid var(--line); background:var(--bg); color:var(--ink); font:inherit; }
+  button { font:inherit; cursor:pointer; border-radius:6px; border:1px solid var(--line); background:var(--bg); color:var(--ink); padding:9px 14px; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#1b2430; font-weight:700; }
+  button:disabled { opacity:.6; cursor:wait; }
+  button:focus-visible, input:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .msg { min-height:1.3em; margin:8px 0 0; font-size:.9rem; color:var(--accent); } .msg.err { color:var(--loss); }
+  .scroll { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:.95rem; min-width:560px; }
+  th { text-align:left; color:var(--muted); font-weight:500; padding:6px 10px; border-bottom:1px solid var(--line); }
+  td { padding:9px 10px; border-bottom:1px solid rgba(58,75,97,.5); white-space:nowrap; }
+  .badge { display:inline-block; min-width:2.2rem; text-align:center; border-radius:4px; padding:1px 6px; font-weight:700; color:#1b2430; }
+  .badge.W { background:var(--win); } .badge.L { background:var(--loss); } .badge.D { background:var(--muted); }
+  .dot { display:inline-block; width:.7em; height:.7em; border-radius:50%; margin-right:6px; border:1px solid #fff; }
+  .dot.w { background:#fff; } .dot.b { background:#10151c; }
+  .empty { color:var(--muted); margin:8px 0 0; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+<main id="app" class="hidden">
+  <section class="panel hero">
+    <div><h1 id="uname"></h1><p class="sub" id="since"></p></div>
+    <div class="rating"><b id="rating">1200</b><span>rating</span></div>
+  </section>
+
+  <section class="stats" aria-label="Record">
+    <div class="stat"><b id="sGames">0</b><span>Games</span></div>
+    <div class="stat"><b id="sWins">0</b><span>Wins</span></div>
+    <div class="stat"><b id="sDraws">0</b><span>Draws</span></div>
+    <div class="stat"><b id="sLosses">0</b><span>Losses</span></div>
+  </section>
+
+  <section class="panel">
+    <h2>Change username</h2>
+    <form id="nameForm">
+      <input id="newName" maxlength="16" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="New username">
+      <button class="primary" id="saveName">Save</button>
+    </form>
+    <p class="msg" id="nameMsg" role="status"></p>
+  </section>
+
+  <section class="panel">
+    <h2>Recent games</h2>
+    <div class="scroll">
+      <table id="games" class="hidden">
+        <thead><tr><th>Result</th><th>Opponent</th><th>Time</th><th>Ended by</th><th>Date</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="empty hidden" id="noGames">No finished games yet. Play one and it will show up here.</p>
+  </section>
+</main>
+<p class="msg err" id="notice" style="max-width:980px;margin:20px auto;padding:0 16px"></p>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
+<script src="/config.js"></script>
+<script src="/nav.js"></script>
+<script>
+(async () => {
+  const $ = (s) => document.querySelector(s);
+  const ZZ = window.ZZ;
+  if (!ZZ.sb) { $('#notice').textContent = "Accounts aren't set up on this server yet."; return; }
+  await ZZ.ready;
+  if (!ZZ.session) return location.replace('/login.html?next=/profile.html');
+
+  const uid = ZZ.session.user.id;
+  const auth = { Authorization: 'Bearer ' + ZZ.session.access_token };
+  let me;
+  try {
+    const r = await fetch('/api/me', { headers: auth });
+    if (!r.ok) throw new Error();
+    me = await r.json();
+  } catch { $('#notice').textContent = 'Could not load your profile. Try logging in again.'; return; }
+
+  const showMe = () => {
+    $('#uname').textContent = me.name;
+    $('#rating').textContent = me.rating;
+    $('#since').textContent = me.since ? 'Member since ' + new Date(me.since).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : '';
+    $('#newName').value = me.name;
+  };
+  showMe();
+  $('#app').classList.remove('hidden'); $('#notice').textContent = '';
+
+  $('#nameForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = $('#nameMsg'), name = $('#newName').value.trim();
+    msg.className = 'msg'; msg.textContent = '';
+    if (name === me.name) return;
+    $('#saveName').disabled = true;
+    try {
+      const r = await fetch('/api/username', { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ username: name }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Could not save.');
+      me.name = j.username; showMe(); ZZ.refresh();
+      msg.textContent = 'Username updated.';
+    } catch (err) { msg.className = 'msg err'; msg.textContent = err.message; }
+    $('#saveName').disabled = false;
+  });
+
+  const { data: rows } = await ZZ.sb.from('games')
+    .select('id,white,black,white_name,black_name,result,reason,pgn,base,inc,created_at')
+    .or(`white.eq.${uid},black.eq.${uid}`).order('created_at', { ascending: false }).limit(100);
+  const games = rows || [];
+  let w = 0, d = 0, l = 0;
+  const tbody = $('#games tbody');
+  const cell = (tr, text) => { const td = document.createElement('td'); td.textContent = text; tr.appendChild(td); return td; };
+
+  games.forEach((g, i) => {
+    const mine = g.white === uid ? 'w' : 'b';
+    const out = g.result === '1/2-1/2' ? 'D' : (g.result === '1-0') === (mine === 'w') ? 'W' : 'L';
+    if (out === 'W') w++; else if (out === 'L') l++; else d++;
+    if (i >= 20) return;
+    const tr = document.createElement('tr');
+    const t1 = document.createElement('td');
+    const badge = document.createElement('span'); badge.className = 'badge ' + out; badge.textContent = out;
+    t1.appendChild(badge); tr.appendChild(t1);
+    const t2 = document.createElement('td');
+    const dot = document.createElement('span'); dot.className = 'dot ' + (mine === 'w' ? 'b' : 'w'); dot.title = mine === 'w' ? 'You were White' : 'You were Black';
+    t2.append(dot, document.createTextNode(mine === 'w' ? g.black_name : g.white_name)); tr.appendChild(t2);
+    cell(tr, `${g.base / 60}+${g.inc}`);
+    cell(tr, g.reason);
+    cell(tr, new Date(g.created_at).toLocaleDateString());
+    const t6 = document.createElement('td');
+    const copy = document.createElement('button'); copy.textContent = 'Copy PGN';
+    copy.onclick = async () => { try { await navigator.clipboard.writeText(g.pgn); copy.textContent = 'Copied'; setTimeout(() => (copy.textContent = 'Copy PGN'), 1500); } catch { copy.textContent = 'Failed'; } };
+    t6.appendChild(copy); tr.appendChild(t6);
+    tbody.appendChild(tr);
+  });
+  $('#sGames').textContent = games.length; $('#sWins').textContent = w; $('#sDraws').textContent = d; $('#sLosses').textContent = l;
+  if (games.length) $('#games').classList.remove('hidden'); else $('#noGames').classList.remove('hidden');
+  if (games.length === 100) $('#sGames').textContent = '100+';
+})();
+</script>
+</body>
+</html>
