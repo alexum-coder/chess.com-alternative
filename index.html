@@ -55,6 +55,9 @@
   .msg { color: var(--accent); font-size: .85rem; min-height: 1.2em; margin: 0; }
   ol.lb { margin: 0; padding-left: 1.4rem; } ol.lb li { margin: 2px 0; }
   ol.lb span { color: var(--muted); float: right; }
+  .btn { display: block; text-align: center; text-decoration: none; background: var(--accent); color: #1b2430;
+    font-weight: 700; padding: 10px; border-radius: 6px; }
+  .btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -70,16 +73,10 @@
     <h1>Zugzwang</h1>
     <p class="sub">Free, real-time chess against a live opponent.</p>
 
-    <div class="panel stack" id="auth">
-      <h2>Account</h2>
-      <div id="authOut">
-        <input id="email" type="email" placeholder="Email" autocomplete="email">
-        <input id="password" type="password" placeholder="Password (6+ characters)" autocomplete="current-password">
-        <input id="username" maxlength="16" placeholder="Username (for sign up)">
-        <div class="row"><button id="login" class="primary">Log in</button><button id="signup">Sign up</button></div>
-      </div>
+    <div class="panel" id="auth">
+      <div id="authOut"><a class="btn" href="/login.html">Log in or sign up</a>
+        <p class="sub" style="margin:8px 0 0">Save your rating and game history. Or just play as a guest below.</p></div>
       <div id="authIn" class="hidden"><span id="who"></span> <button id="logout">Log out</button></div>
-      <p class="msg" id="authMsg"></p>
     </div>
 
     <div class="panel" id="lobby">
@@ -110,7 +107,7 @@
 </main>
 
 <script src="/socket.io/socket.io.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
 <script src="/config.js"></script>
 <script type="module">
 import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.0.0/+esm';
@@ -132,7 +129,7 @@ let token = null, myName = null;
 const hello = () => socket.emit('hello', { id: pid, name: $('#name').value.trim() || 'Guest', token });
 socket.on('connect', hello);
 socket.on('me', (m) => { myName = m.name; $('#me').textContent = `${m.name} · rating ${m.rating}${m.authed ? '' : ' (guest, not saved)'}`; updateAuthUI(); });
-socket.on('autherror', (t) => { $('#authMsg').textContent = t; token = null; sb?.auth.signOut(); });
+socket.on('autherror', (t) => { $('#me').textContent = t; token = null; sb?.auth.signOut(); });
 
 function updateAuthUI() {
   $('#auth').classList.toggle('hidden', !sb);
@@ -154,18 +151,6 @@ loadBoard();
 if (sb) {
   sb.auth.getSession().then(({ data }) => { token = data.session?.access_token || null; updateAuthUI(); hello(); });
   sb.auth.onAuthStateChange((_e, s) => { token = s?.access_token || null; updateAuthUI(); hello(); });
-  const creds = () => ({ email: $('#email').value.trim(), password: $('#password').value });
-  $('#login').addEventListener('click', async () => {
-    $('#authMsg').textContent = '';
-    const { error } = await sb.auth.signInWithPassword(creds());
-    if (error) $('#authMsg').textContent = error.message;
-  });
-  $('#signup').addEventListener('click', async () => {
-    $('#authMsg').textContent = '';
-    const { data, error } = await sb.auth.signUp({ ...creds(), options: { data: { username: $('#username').value.trim() } } });
-    if (error) $('#authMsg').textContent = error.message;
-    else if (!data.session) $('#authMsg').textContent = 'Check your email to confirm, then log in.';
-  });
   $('#logout').addEventListener('click', () => sb.auth.signOut());
 }
 updateAuthUI();

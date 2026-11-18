@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Log in · Zugzwang</title>
+<style>
+  :root { --bg:#1b2430; --panel:#243142; --ink:#e9eef3; --muted:#8fa1b3; --light:#c9d6df; --dark:#52677a;
+    --accent:#f2b84b; --line:#3a4b61; --err:#ff8f8f; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; background:var(--bg); color:var(--ink);
+    font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; display:grid; grid-template-columns:1fr 1fr; }
+  @media (max-width:820px){ body{ grid-template-columns:1fr; } .brand{ display:none; } }
+  .brand { position:relative; overflow:hidden; display:grid; place-content:center; padding:40px; background:var(--dark); }
+  .brand::before { content:""; position:absolute; inset:0; opacity:.35;
+    background:conic-gradient(var(--light) 25%, transparent 0 50%, var(--light) 0 75%, transparent 0) 0 0/25% 25%; }
+  .brand > div { position:relative; max-width:380px; }
+  .brand img { width:120px; height:120px; filter:drop-shadow(0 6px 10px rgba(0,0,0,.4)); }
+  .brand h1 { margin:12px 0 8px; font-size:3rem; letter-spacing:-.02em; line-height:1.05; color:#fff; text-shadow:0 2px 12px rgba(27,36,48,.6); }
+  .brand p { margin:0; color:#fff; font-size:1.1rem; text-shadow:0 1px 8px rgba(27,36,48,.7); }
+  main { display:grid; place-items:center; padding:24px 16px; }
+  .card { width:100%; max-width:400px; }
+  .card h2 { margin:0 0 4px; font-size:1.6rem; letter-spacing:-.01em; }
+  .lead { color:var(--muted); margin:0 0 20px; }
+  .tabs { display:grid; grid-template-columns:1fr 1fr; background:var(--panel); border-radius:8px; padding:4px; margin-bottom:20px; }
+  .tabs button { border:0; background:none; color:var(--muted); padding:8px; border-radius:6px; font:inherit; cursor:pointer; }
+  .tabs button[aria-selected="true"] { background:var(--bg); color:var(--ink); font-weight:600; }
+  .field { margin-bottom:14px; }
+  label { display:block; font-size:.9rem; margin-bottom:4px; }
+  .hint { color:var(--muted); font-size:.8rem; margin-top:3px; }
+  input[type=text], input[type=email], input[type=password] { width:100%; padding:10px 12px; border-radius:6px;
+    border:1px solid var(--line); background:var(--panel); color:var(--ink); font:inherit; }
+  button:focus-visible, input:focus-visible, a:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .show { display:flex; align-items:center; gap:6px; font-size:.85rem; color:var(--muted); margin:-4px 0 14px; }
+  .go { width:100%; padding:11px; border-radius:6px; border:0; background:var(--accent); color:#1b2430; font:inherit; font-weight:700; cursor:pointer; }
+  .go:disabled { opacity:.6; cursor:wait; }
+  .link { background:none; border:0; color:var(--accent); font:inherit; cursor:pointer; padding:0; text-decoration:underline; }
+  .msg { min-height:1.4em; margin:12px 0 0; font-size:.9rem; }
+  .msg.err { color:var(--err); } .msg.ok { color:var(--accent); }
+  .alt { margin-top:18px; text-align:center; color:var(--muted); font-size:.9rem; }
+  .alt a { color:var(--ink); }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+<aside class="brand" aria-hidden="true">
+  <div>
+    <img src="/pieces/bN.svg" alt="">
+    <h1>Zugzwang</h1>
+    <p>Free online chess. Sign in to keep your rating and game history.</p>
+  </div>
+</aside>
+
+<main>
+  <div class="card">
+    <h2 id="title">Welcome back</h2>
+    <p class="lead" id="lead">Log in to continue your games.</p>
+
+    <div class="tabs" role="tablist" id="tabs">
+      <button role="tab" id="tabLogin" aria-selected="true">Log in</button>
+      <button role="tab" id="tabSignup" aria-selected="false">Sign up</button>
+    </div>
+
+    <form id="form" novalidate>
+      <div class="field" data-m="signup">
+        <label for="username">Username</label>
+        <input id="username" type="text" maxlength="16" autocomplete="username" autocapitalize="off" spellcheck="false">
+        <div class="hint">3 to 16 letters, numbers or underscores. Other players will see this.</div>
+      </div>
+      <div class="field" data-m="login signup forgot">
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email">
+      </div>
+      <div class="field" data-m="login signup reset">
+        <label for="password" id="pwLabel">Password</label>
+        <input id="password" type="password" minlength="8">
+        <div class="hint" data-m="signup reset">At least 8 characters.</div>
+      </div>
+      <div class="field" data-m="signup reset">
+        <label for="confirm">Confirm password</label>
+        <input id="confirm" type="password" autocomplete="new-password">
+      </div>
+      <label class="show" data-m="login signup reset"><input type="checkbox" id="showpw"> Show password</label>
+
+      <button class="go" id="go" type="submit">Log in</button>
+      <p class="msg" id="msg" role="alert" aria-live="polite"></p>
+    </form>
+
+    <div class="alt" data-m="login"><button class="link" id="toForgot">Forgot your password?</button></div>
+    <div class="alt" data-m="forgot reset"><button class="link" id="toLogin">Back to log in</button></div>
+    <div class="alt"><a href="/">Skip and play as a guest</a></div>
+    <p class="msg err hidden" id="setup">Accounts aren't set up on this server yet, so you can only play as a guest.</p>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
+<script src="/config.js"></script>
+<script>
+const $ = (s) => document.querySelector(s);
+const cfg = window.ZZ_CONFIG || {};
+const sb = cfg.url && window.supabase ? window.supabase.createClient(cfg.url, cfg.anonKey) : null;
+let mode = 'login', recovering = /type=recovery/.test(location.hash), busy = false;
+
+const COPY = {
+  login:  ['Welcome back', 'Log in to continue your games.', 'Log in'],
+  signup: ['Create your account', 'Free forever. Your rating and games are saved.', 'Create account'],
+  forgot: ['Reset your password', "Enter your email and we'll send you a reset link.", 'Send reset link'],
+  reset:  ['Choose a new password', 'Pick something you have not used before.', 'Save new password']
+};
+
+function setMode(m) {
+  mode = m; msg('');
+  const [t, l, b] = COPY[m];
+  $('#title').textContent = t; $('#lead').textContent = l; $('#go').textContent = b;
+  document.querySelectorAll('[data-m]').forEach((el) => el.classList.toggle('hidden', !el.dataset.m.split(' ').includes(m)));
+  $('#tabs').classList.toggle('hidden', m === 'forgot' || m === 'reset');
+  $('#tabLogin').setAttribute('aria-selected', m === 'login');
+  $('#tabSignup').setAttribute('aria-selected', m === 'signup');
+  $('#password').autocomplete = m === 'login' ? 'current-password' : 'new-password';
+  $('#pwLabel').textContent = m === 'reset' ? 'New password' : 'Password';
+}
+function msg(t, kind = 'err') { const e = $('#msg'); e.textContent = t; e.className = 'msg ' + (t ? kind : ''); }
+const go = () => { location.replace('/'); };
+
+$('#tabLogin').onclick = () => setMode('login');
+$('#tabSignup').onclick = () => setMode('signup');
+$('#toForgot').onclick = () => setMode('forgot');
+$('#toLogin').onclick = () => setMode('login');
+$('#showpw').onchange = (e) => { for (const id of ['#password', '#confirm']) $(id).type = e.target.checked ? 'text' : 'password'; };
+
+function friendly(err) {
+  const m = (err.message || '').toLowerCase();
+  if (m.includes('invalid login')) return 'That email and password do not match.';
+  if (m.includes('already registered') || m.includes('already been registered')) return 'That email already has an account. Log in instead.';
+  if (m.includes('email not confirmed')) return 'Confirm your email first. Check your inbox for the link.';
+  if (m.includes('rate limit') || m.includes('too many')) return 'Too many attempts. Wait a minute and try again.';
+  if (m.includes('password')) return err.message;
+  return err.message || 'Something went wrong. Try again.';
+}
+
+$('#form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!sb || busy) return;
+  const email = $('#email').value.trim(), pw = $('#password').value, user = $('#username').value.trim();
+  if (mode !== 'reset' && !/^\S+@\S+\.\S+$/.test(email)) return msg('Enter a valid email address.');
+  if (mode === 'signup' && !/^\w{3,16}$/.test(user)) return msg('Username must be 3 to 16 letters, numbers or underscores.');
+  if ((mode === 'signup' || mode === 'reset') && pw.length < 8) return msg('Password must be at least 8 characters.');
+  if ((mode === 'signup' || mode === 'reset') && pw !== $('#confirm').value) return msg('The two passwords do not match.');
+  if (mode === 'login' && !pw) return msg('Enter your password.');
+
+  busy = true; $('#go').disabled = true; msg('');
+  try {
+    if (mode === 'login') {
+      const { error } = await sb.auth.signInWithPassword({ email, password: pw });
+      if (error) throw error; go();
+    } else if (mode === 'signup') {
+      const { data: taken } = await sb.from('profiles').select('id').ilike('username', user).limit(1);
+      if (taken && taken.length) throw new Error('That username is taken. Try another.');
+      const { data, error } = await sb.auth.signUp({ email, password: pw, options: { data: { username: user } } });
+      if (error) throw error;
+      if (data.session) go();
+      else msg('Account created. Check your email for a confirmation link, then log in.', 'ok');
+    } else if (mode === 'forgot') {
+      const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + '/login.html' });
+      if (error) throw error;
+      msg('If that email has an account, a reset link is on its way.', 'ok');
+    } else if (mode === 'reset') {
+      const { error } = await sb.auth.updateUser({ password: pw });
+      if (error) throw error;
+      msg('Password updated. Taking you to the game...', 'ok'); setTimeout(go, 800);
+    }
+  } catch (err) { msg(friendly(err)); }
+  busy = false; $('#go').disabled = false;
+});
+
+if (!sb) {
+  $('#setup').classList.remove('hidden');
+  $('#form').classList.add('hidden'); $('#tabs').classList.add('hidden');
+  document.querySelectorAll('.alt').forEach((a) => a.dataset.m && a.classList.add('hidden'));
+} else {
+  sb.auth.onAuthStateChange((ev) => {
+    if (ev === 'PASSWORD_RECOVERY') { recovering = true; setMode('reset'); }
+  });
+  sb.auth.getSession().then(({ data }) => {
+    if (recovering) setMode('reset');
+    else if (data.session) go();
+  });
+}
+setMode(recovering ? 'reset' : 'login');
+if (location.hash === '#signup') setMode('signup');
+</script>
+</body>
+</html>
