@@ -132,6 +132,29 @@ function scheduleTimeout(g) {
   }, g.clock[side] + 50);
 }
 
+const info = (p) => ({ name: users.get(p.pid).name, rating: users.get(p.pid).rating });
+
+// Everything a client needs to draw a game from scratch (used for new games and reconnects).
+function snapshot(g, color) {
+  const hist = g.chess.history({ verbose: true });
+  const last = hist[hist.length - 1];
+  return {
+    gameId: g.id, color, fen: g.chess.fen(), clock: g.clock, elapsed: Date.now() - g.turnStart,
+    turn: g.chess.turn(), started: g.started, inc: g.inc, base: g.base,
+    moves: hist.map((m) => m.san), last: last ? [last.from, last.to] : null,
+    white: info(g.white), black: info(g.black)
+  };
+}
+const activeGameFor = (pid) => [...games.values()].find((g) => !g.over && (g.white.pid === pid || g.black.pid === pid));
+
+function resume(socket, g, pid) {
+  const isWhite = g.white.pid === pid;
+  (isWhite ? g.white : g.black).sid = socket.id;
+  socket.join(g.id);
+  socket.emit('start', snapshot(g, isWhite ? 'w' : 'b'));
+  io.to(g.id).emit('opp', { online: true });
+}
+
 function startGame(a, b, base, inc) {
   const [white, black] = Math.random() < 0.5 ? [a, b] : [b, a];
   const g = {
@@ -144,13 +167,7 @@ function startGame(a, b, base, inc) {
   };
   games.set(g.id, g);
   for (const p of [white, black]) io.sockets.sockets.get(p.sid)?.join(g.id);
-  const info = (p) => ({ name: users.get(p.pid).name, rating: users.get(p.pid).rating });
-  for (const [p, color] of [[white, 'w'], [black, 'b']]) {
-    io.to(p.sid).emit('start', {
-      gameId: g.id, color, fen: g.chess.fen(), clock: g.clock, inc,
-      white: info(white), black: info(black)
-    });
-  }
+  for (const [p, color] of [[white, 'w'], [black, 'b']]) io.to(p.sid).emit('start', snapshot(g, color));
   scheduleTimeout(g);
 }
 
@@ -169,6 +186,8 @@ io.on('connection', (socket) => {
         else if (name) users.get(pid).name = String(name).slice(0, 20);
       }
       socket.emit('me', { id: pid, ...users.get(pid) });
+      const live = activeGameFor(pid);
+      if (live) resume(socket, live, pid);
     } catch (e) {
       console.error('hello failed:', e.message);
       const expired = e.message === 'invalid session';
@@ -181,6 +200,8 @@ io.on('connection', (socket) => {
 
   socket.on('seek', ({ base, inc }) => {
     if (!pid) return;
+    const live = activeGameFor(pid);
+    if (live) return resume(socket, live, pid);
     base = Math.min(Math.max(+base || 300, 30), 3600);
     inc = Math.min(Math.max(+inc || 0, 0), 60);
     const key = `${base}+${inc}`;
@@ -241,6 +262,7 @@ io.on('connection', (socket) => {
       if (g.white.sid === socket.id || g.black.sid === socket.id) {
         // Give them 30s to come back before forfeiting.
         const white = g.white.sid === socket.id;
+        io.to(g.id).emit('opp', { online: false, seconds: 30 });
         setTimeout(() => {
           const p = white ? g.white : g.black;
           if (p.sid === socket.id) endGame(g, white ? '0-1' : '1-0', 'abandoned');

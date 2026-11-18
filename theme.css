@@ -1,0 +1,16 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap');
+:root {
+  --bg: #10161d; --panel: #18212b; --panel2: #202c38; --ink: #eaf0f5; --muted: #8a9bab; --line: #2b3a49;
+  --light: #c5d2dc; --dark: #566d84; --accent: #f2b84b;
+  --win: #7bd88f; --loss: #ff8f8f; --err: #ff8f8f;
+  --last: rgba(242,184,75,.5); --dot: rgba(16,22,29,.32);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; color: var(--ink);
+  background: radial-gradient(1100px 560px at 72% -12%, #1d2b3a 0%, var(--bg) 62%) fixed, var(--bg);
+  font: 16px/1.5 Manrope, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+button, input { font-family: inherit; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }

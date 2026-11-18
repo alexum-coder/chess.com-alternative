@@ -7,7 +7,7 @@
   const style = document.createElement('style');
   style.textContent = `
   .zznav{max-width:980px;margin:0 auto;padding:14px 16px 0;display:flex;align-items:center;gap:22px;
-    color:var(--ink,#e9eef3);font:600 15px system-ui,-apple-system,"Segoe UI",sans-serif}
+    color:var(--ink,#e9eef3);font:700 15px Manrope,system-ui,-apple-system,"Segoe UI",sans-serif}
   .zznav a{color:inherit;text-decoration:none}
   .zzbrand{font-size:1.25rem;letter-spacing:-.01em}
   .zznav nav{display:flex;gap:18px}

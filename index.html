@@ -4,78 +4,107 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Zugzwang: free online chess</title>
+<link rel="stylesheet" href="/theme.css">
 <style>
-  :root {
-    --bg: #1b2430; --panel: #243142; --ink: #e9eef3; --muted: #8fa1b3;
-    --light: #c9d6df; --dark: #52677a; --accent: #f2b84b;
-    --last: rgba(242,184,75,.55); --dot: rgba(27,36,48,.35);
-    color-scheme: dark;
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink);
-    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  main { max-width: 980px; margin: 0 auto; padding: 20px 16px 40px;
-    display: grid; gap: 20px; grid-template-columns: minmax(0, 560px) 1fr; align-items: start; }
-  @media (max-width: 820px) { main { grid-template-columns: 1fr; } }
-  h1 { margin: 0 0 4px; font-size: 1.5rem; letter-spacing: -.01em; }
-  .sub { color: var(--muted); margin: 0 0 16px; }
-  .bar { display: flex; justify-content: space-between; align-items: center;
-    padding: 8px 12px; background: var(--panel); border-radius: 8px; margin: 8px 0; }
-  .bar .who { font-weight: 600; } .bar .who small { color: var(--muted); font-weight: 400; }
-  .clock { font: 600 1.4rem ui-monospace, Menlo, monospace; min-width: 4.5ch; text-align: right; }
-  .clock.active { color: var(--accent); } .clock.low { color: #ff7a7a; }
-  #board { display: grid; grid-template-columns: repeat(8, 1fr); aspect-ratio: 1;
-    border-radius: 6px; overflow: hidden; user-select: none; touch-action: manipulation; }
-  .sq { position: relative; display: grid; place-items: center; cursor: pointer;
-    font-size: min(8vw, 52px); line-height: 1; }
-  .sq.l { background: var(--light); } .sq.d { background: var(--dark); }
+  main { max-width: 1040px; margin: 0 auto; padding: 18px 16px 48px; display: grid; gap: 24px;
+    grid-template-columns: minmax(0, 640px) minmax(280px, 1fr); align-items: start; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+
+  .player { display: flex; align-items: center; gap: 12px; padding: 8px 10px; margin: 8px 0; background: var(--panel);
+    border: 1px solid transparent; border-radius: 12px; transition: border-color .2s; }
+  .player.turn { border-color: var(--accent); }
+  .av { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: var(--panel2);
+    font-weight: 800; flex: none; }
+  .pn { min-width: 0; line-height: 1.25; }
+  .pn b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pn small { color: var(--muted); }
+  .pn em { display: block; font-style: normal; color: var(--loss); font-size: .8rem; }
+  .clock { margin-left: auto; font: 800 1.5rem/1 Manrope, sans-serif; font-variant-numeric: tabular-nums;
+    padding: 8px 12px; border-radius: 8px; background: var(--bg); min-width: 5.2ch; text-align: center; }
+  .clock.active { background: var(--accent); color: #1b2430; }
+  .clock.low { color: var(--loss); } .clock.active.low { background: var(--loss); color: #1b2430; }
+
+  .boardwrap { position: relative; }
+  #board { display: grid; grid-template-columns: repeat(8, 1fr); aspect-ratio: 1; border-radius: 10px; overflow: hidden;
+    box-shadow: 0 24px 40px -24px rgba(0,0,0,.8); user-select: none; touch-action: manipulation; }
+  .sq { position: relative; display: grid; place-items: center; cursor: pointer; }
+  .sq.l { background-color: var(--light); } .sq.d { background-color: var(--dark); }
   .sq.last::before { content: ""; position: absolute; inset: 0; background: var(--last); }
-  .sq.sel { outline: 3px solid var(--accent); outline-offset: -3px; }
-  .sq.target::after { content: ""; width: 28%; height: 28%; border-radius: 50%; background: var(--dot); position: absolute; }
-  .sq.target.cap::after { width: 86%; height: 86%; background: none; border: 4px solid var(--dot); }
-  .pc { position: relative; z-index: 1; width: 100%; height: 100%; pointer-events: none; }
-  .panel { background: var(--panel); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
-  .panel h2 { margin: 0 0 10px; font-size: 1rem; }
+  .sq.chk { background-image: radial-gradient(circle, rgba(255,70,70,.9) 0, rgba(255,70,70,0) 72%); }
+  .sq.sel { box-shadow: inset 0 0 0 3px var(--accent); }
+  .sq.target::after { content: ""; position: absolute; width: 28%; height: 28%; border-radius: 50%; background: var(--dot); }
+  .sq.target.cap::after { width: 88%; height: 88%; background: none; border: 5px solid var(--dot); }
+  .sq i { position: absolute; font: 700 .64rem/1 Manrope, sans-serif; font-style: normal; opacity: .8; pointer-events: none; }
+  .sq i.f { right: 4px; bottom: 3px; } .sq i.r { left: 4px; top: 3px; }
+  .sq.l i { color: var(--dark); } .sq.d i { color: var(--light); }
+  .pc { position: relative; z-index: 1; width: 90%; height: 90%; pointer-events: none; }
+  .sq.last .pc { animation: land .16s ease-out; }
+  @keyframes land { from { transform: scale(1.12); } to { transform: scale(1); } }
+  .sq:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+
+  .veil { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 10px;
+    background: rgba(16,22,29,.66); backdrop-filter: blur(2px); }
+  .veil-card { text-align: center; padding: 20px 28px; max-width: 320px; }
+  .veil-card h2 { margin: 0 0 4px; font-size: 1.7rem; letter-spacing: -.02em; }
+  .veil-card p { margin: 0 0 16px; color: var(--light); }
+  .veil-card .row { display: flex; gap: 8px; justify-content: center; }
+  .spin { width: 30px; height: 30px; margin: 0 auto 12px; border: 3px solid var(--line); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .panel { background: var(--panel); border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+  .panel h2 { margin: 0 0 12px; font-size: 1rem; }
   label { display: block; color: var(--muted); font-size: .85rem; margin-bottom: 4px; }
-  input { width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid #3a4b61;
-    background: var(--bg); color: var(--ink); font: inherit; }
-  .modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
-  button { font: inherit; cursor: pointer; border-radius: 6px; border: 1px solid #3a4b61;
-    background: var(--bg); color: var(--ink); padding: 10px 8px; }
+  input { width: 100%; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; }
+  button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line); background: var(--panel2); color: var(--ink); padding: 9px 14px; }
   button:hover { border-color: var(--accent); }
-  button:focus-visible, .sq:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  button.primary { background: var(--accent); color: #1b2430; border-color: var(--accent); font-weight: 600; }
-  .modes button b { display: block; } .modes button span { color: var(--muted); font-size: .8rem; }
-  #moves { max-height: 220px; overflow: auto; font-family: ui-monospace, Menlo, monospace; font-size: .9rem;
-    display: grid; grid-template-columns: 2.5rem 1fr 1fr; gap: 2px 8px; }
-  #moves .n { color: var(--muted); }
-  #status { min-height: 1.5em; color: var(--accent); }
-  .stack > * { margin-bottom: 8px; }
-  .row { display: flex; gap: 8px; } .row button { flex: 1; }
-  .msg { color: var(--accent); font-size: .85rem; min-height: 1.2em; margin: 0; }
-  ol.lb { margin: 0; padding-left: 1.4rem; } ol.lb li { margin: 2px 0; }
-  ol.lb span { color: var(--muted); float: right; }
-  .btn { display: block; text-align: center; text-decoration: none; background: var(--accent); color: #1b2430;
-    font-weight: 700; padding: 10px; border-radius: 6px; }
-  .btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #1b2430; font-weight: 800; }
+  .modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+  .modes button { padding: 12px 6px; text-align: center; }
+  .modes b { display: block; font-size: 1.15rem; font-weight: 800; }
+  .modes span { color: var(--muted); font-size: .78rem; }
+
+  #youAre { color: var(--muted); font-size: .9rem; margin: -6px 0 10px; }
+  #status { font-weight: 700; margin: 0 0 12px; min-height: 1.5em; }
+  #moves { max-height: 240px; overflow: auto; display: grid; grid-template-columns: 2.4rem 1fr 1fr; gap: 2px 6px;
+    font-variant-numeric: tabular-nums; margin-bottom: 14px; }
+  #moves .n { color: var(--muted); } #moves .m { padding: 0 6px; border-radius: 4px; }
+  #moves .m.cur { background: var(--panel2); color: var(--accent); font-weight: 700; }
+  ol.lb { margin: 0; padding: 0; list-style: none; counter-reset: r; }
+  ol.lb li { counter-increment: r; display: flex; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+  ol.lb li::before { content: counter(r); color: var(--muted); width: 1.4rem; }
+  ol.lb li.none { color: var(--muted); } ol.lb li.none::before { content: none; }
+  ol.lb li:last-child { border: 0; } ol.lb span { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 700; }
+  .foot { color: var(--muted); font-size: .85rem; margin: 0; }
+  .empty { color: var(--muted); margin: 0; }
   .hidden { display: none !important; }
 </style>
 </head>
 <body>
 <main>
   <section aria-label="Game">
-    <div class="bar"><div class="who" id="topName">Opponent</div><div class="clock" id="topClock">--:--</div></div>
-    <div id="board" role="grid" aria-label="Chess board"></div>
-    <div class="bar"><div class="who" id="botName">You</div><div class="clock" id="botClock">--:--</div></div>
+    <div class="player" id="topCard">
+      <div class="av" id="topAv">?</div>
+      <div class="pn"><b id="topName">Opponent</b><small id="topRating"></small><em id="oppStatus"></em></div>
+      <div class="clock" id="topClock">--:--</div>
+    </div>
+    <div class="boardwrap">
+      <div id="board" role="grid" aria-label="Chess board"></div>
+      <div class="veil" id="veil"></div>
+    </div>
+    <div class="player" id="botCard">
+      <div class="av" id="botAv">?</div>
+      <div class="pn"><b id="botName">You</b><small id="botRating"></small></div>
+      <div class="clock" id="botClock">--:--</div>
+    </div>
   </section>
 
   <aside>
-    <p class="sub">Free, real-time chess against a live opponent.</p>
-
     <div class="panel" id="lobby">
       <h2>Find a game</h2>
       <div id="nameWrap"><label for="name">Guest display name</label>
-      <input id="name" maxlength="20" placeholder="Guest"></div>
+        <input id="name" maxlength="20" placeholder="Guest"></div>
       <div class="modes">
         <button data-b="60" data-i="0"><b>1 min</b><span>Bullet</span></button>
         <button data-b="180" data-i="2"><b>3 + 2</b><span>Blitz</span></button>
@@ -84,18 +113,18 @@
         <button data-b="900" data-i="10"><b>15 + 10</b><span>Rapid</span></button>
         <button data-b="1800" data-i="0"><b>30 min</b><span>Classical</span></button>
       </div>
-      <button class="primary hidden" id="cancel">Cancel search</button>
     </div>
 
     <div class="panel hidden" id="gamePanel">
-      <h2>Moves</h2>
+      <h2>Game</h2>
+      <p id="youAre"></p>
+      <p id="status" role="status"></p>
       <div id="moves"></div>
-      <p id="status"></p>
       <button id="resign">Resign</button>
-      <button id="again" class="primary hidden">Play again</button>
     </div>
+
     <div class="panel"><h2>Top players</h2><ol class="lb" id="lb"></ol></div>
-    <p class="sub" id="me"></p>
+    <p class="foot" id="me"></p>
   </aside>
 </main>
 
@@ -107,39 +136,36 @@
 import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.0.0/+esm';
 
 const $ = (s) => document.querySelector(s);
+const FILES = 'abcdefgh';
 const socket = io();
 
 let pid = localStorage.getItem('pid') || crypto.randomUUID();
 localStorage.setItem('pid', pid);
 $('#name').value = localStorage.getItem('name') || '';
 
-let game = null;     // { id, color, chess, clock, turn, started, last, over, names }
+const idleChess = new Chess();
+let game = null;   // { id, color, chess, clock, turn, last, over, stamp, moves, white, black }
 let selected = null, targets = [], tick = null;
+let myName = null, myRating = null;
 
 const sb = window.ZZ?.sb || null;
-let token = null, myName = null, tokenBroken = false;
+let token = null, tokenBroken = false;
 const useToken = () => (token && !tokenBroken ? token : undefined);
-
 const hello = () => socket.emit('hello', { id: pid, name: $('#name').value.trim() || 'Guest', token: useToken() });
+
+/* ---------- connection and account ---------- */
 socket.on('connect', hello);
-socket.on('me', (m) => { myName = m.name; $('#me').textContent = `${m.name} · rating ${m.rating}${m.authed ? '' : ' (guest, not saved)'}`; updateAuthUI(); });
+socket.on('me', (m) => {
+  myName = m.name; myRating = m.rating;
+  $('#me').textContent = m.authed ? '' : 'Playing as a guest: your rating is not saved. Log in to keep it.';
+  paintPlayers();
+});
 socket.on('autherror', (e) => {
   $('#me').textContent = e.text;
   if (e.signOut) { token = null; sb?.auth.signOut(); }
-  else { tokenBroken = true; updateAuthUI(); hello(); } // fall back to guest, stay logged in
+  else { tokenBroken = true; updateAuthUI(); hello(); }
 });
-
 function updateAuthUI() { $('#nameWrap').classList.toggle('hidden', !useToken()); }
-async function loadBoard() {
-  try {
-    const rows = await (await fetch('/api/leaderboard')).json();
-    $('#lb').innerHTML = rows.length
-      ? rows.map((r) => `<li>${r.username.replace(/[<>&]/g, '')}<span>${r.rating}</span></li>`).join('')
-      : '<li style="list-style:none;color:var(--muted)">Play a rated game to appear here.</li>';
-  } catch {}
-}
-loadBoard();
-
 if (sb) {
   const sync = () => { token = ZZ.session?.access_token || null; updateAuthUI(); hello(); };
   ZZ.ready.then(sync);
@@ -148,111 +174,158 @@ if (sb) {
 updateAuthUI();
 $('#name').addEventListener('change', () => { localStorage.setItem('name', $('#name').value); hello(); });
 
-document.querySelectorAll('.modes button').forEach((b) =>
-  b.addEventListener('click', () => {
-    hello();
-    socket.emit('seek', { base: +b.dataset.b, inc: +b.dataset.i });
-  }));
-$('#cancel').addEventListener('click', () => { socket.emit('cancelSeek'); $('#cancel').classList.add('hidden'); });
-$('#resign').addEventListener('click', () => game && !game.over && socket.emit('resign', { gameId: game.id }));
-$('#again').addEventListener('click', () => { $('#lobby').classList.remove('hidden'); $('#again').classList.add('hidden'); });
+/* ---------- leaderboard ---------- */
+async function loadBoard() {
+  const ol = $('#lb');
+  try {
+    const rows = await (await fetch('/api/leaderboard')).json();
+    ol.replaceChildren();
+    if (!rows.length) { ol.appendChild(Object.assign(document.createElement('li'), { className: 'none', textContent: 'Play a rated game to appear here.' })); return; }
+    for (const r of rows) {
+      const li = document.createElement('li'), s = document.createElement('span');
+      li.append(r.username); s.textContent = r.rating; li.appendChild(s); ol.appendChild(li);
+    }
+  } catch {}
+}
+loadBoard();
 
-socket.on('waiting', () => $('#cancel').classList.remove('hidden'));
+/* ---------- veil (overlay on the board) ---------- */
+function veil(o) {
+  const v = $('#veil'); v.replaceChildren();
+  if (!o) return v.classList.add('hidden');
+  const card = document.createElement('div'); card.className = 'veil-card';
+  if (o.spin) card.appendChild(Object.assign(document.createElement('div'), { className: 'spin' }));
+  card.appendChild(Object.assign(document.createElement('h2'), { textContent: o.title }));
+  if (o.sub) card.appendChild(Object.assign(document.createElement('p'), { textContent: o.sub }));
+  if (o.button) {
+    const b = Object.assign(document.createElement('button'), { textContent: o.button.label, className: o.button.primary ? 'primary' : '' });
+    b.onclick = o.button.onClick; card.appendChild(b);
+  }
+  v.appendChild(card); v.classList.remove('hidden');
+}
+const idleVeil = () => veil({ title: 'Play chess', sub: 'Pick a time control to find an opponent.' });
+idleVeil();
 
+/* ---------- lobby actions ---------- */
+document.querySelectorAll('.modes button').forEach((b) => b.addEventListener('click', () => {
+  hello(); socket.emit('seek', { base: +b.dataset.b, inc: +b.dataset.i });
+}));
+$('#resign').addEventListener('click', () => game && !game.over && confirm('Resign this game?') && socket.emit('resign', { gameId: game.id }));
+socket.on('waiting', (key) => veil({ title: 'Finding an opponent', sub: `Time control ${key.replace('+', ' + ')}`, spin: true,
+  button: { label: 'Cancel', onClick: () => { socket.emit('cancelSeek'); idleVeil(); } } }));
+
+/* ---------- game events (also used for reconnecting) ---------- */
 socket.on('start', (s) => {
-  game = { id: s.gameId, color: s.color, chess: new Chess(s.fen), clock: s.clock, turn: 'w',
-    started: true, last: null, over: false, stamp: Date.now(), moves: [] };
-  const me = s.color === 'w' ? s.white : s.black, opp = s.color === 'w' ? s.black : s.white;
-  $('#botName').innerHTML = `${me.name} <small>${me.rating}</small>`;
-  $('#topName').innerHTML = `${opp.name} <small>${opp.rating}</small>`;
-  $('#lobby').classList.add('hidden'); $('#cancel').classList.add('hidden');
-  $('#gamePanel').classList.remove('hidden'); $('#again').classList.add('hidden');
-  $('#resign').classList.remove('hidden');
-  $('#status').textContent = s.color === 'w' ? 'You are White. Your move.' : 'You are Black.';
+  game = { id: s.gameId, color: s.color, chess: new Chess(s.fen), clock: s.clock, turn: s.turn || 'w', over: false,
+    stamp: Date.now() - (s.elapsed || 0), moves: s.moves || [], last: s.last || null, white: s.white, black: s.black };
   selected = null; targets = [];
-  render(); clearInterval(tick); tick = setInterval(drawClocks, 100);
+  veil(null);
+  $('#lobby').classList.add('hidden'); $('#gamePanel').classList.remove('hidden'); $('#resign').classList.remove('hidden');
+  $('#youAre').textContent = `You are playing ${s.color === 'w' ? 'White' : 'Black'}`;
+  $('#oppStatus').textContent = '';
+  paintPlayers(); setStatus(); render();
+  clearInterval(tick); tick = setInterval(drawClocks, 100);
 });
 
 socket.on('state', (s) => {
   if (!game) return;
   game.chess.load(s.fen);
-  game.clock = s.clock; game.turn = s.turn; game.started = s.started;
-  game.last = [s.from, s.to]; game.stamp = Date.now(); game.moves.push(s.san);
+  game.clock = s.clock; game.turn = s.turn; game.last = [s.from, s.to]; game.stamp = Date.now(); game.moves.push(s.san);
   selected = null; targets = [];
-  $('#status').textContent = game.chess.inCheck() ? 'Check!' : (s.turn === game.color ? 'Your move.' : '');
-  render();
+  setStatus(); render();
 });
+
+socket.on('opp', (e) => { $('#oppStatus').textContent = e.online ? '' : `Disconnected. Forfeits in ${e.seconds || 30}s unless they return.`; });
 
 socket.on('over', (o) => {
   if (!game) return;
   game.over = true; clearInterval(tick);
-  const mine = game.color === 'w' ? 1 : 0;
-  const won = (o.result === '1-0' && mine) || (o.result === '0-1' && !mine);
-  const text = o.result === '1/2-1/2' ? 'Draw' : won ? 'You won' : 'You lost';
-  const dw = game.color === 'w' ? o.ratings.dw : -o.ratings.dw;
-  $('#status').textContent = `${text} by ${o.reason}. Rating ${dw >= 0 ? '+' : ''}${dw}.`;
-  $('#resign').classList.add('hidden'); $('#again').classList.remove('hidden');
+  const white = game.color === 'w';
+  const won = (o.result === '1-0' && white) || (o.result === '0-1' && !white);
+  const dw = white ? o.ratings.dw : -o.ratings.dw;
+  const myNew = white ? o.ratings.w : o.ratings.b;
+  $('#status').textContent = '';
+  $('#resign').classList.add('hidden');
   hello(); render(); setTimeout(loadBoard, 1500);
+  veil({
+    title: o.result === '1/2-1/2' ? 'Draw' : won ? 'You won' : 'You lost',
+    sub: `By ${o.reason}. Rating ${dw >= 0 ? '+' : ''}${dw} (${myNew}).`,
+    button: { label: 'Play again', primary: true, onClick: () => {
+      game = null; selected = null; targets = [];
+      $('#gamePanel').classList.add('hidden'); $('#lobby').classList.remove('hidden');
+      paintPlayers(); drawClocks(); render(); idleVeil();
+    } }
+  });
 });
 
-function fmt(ms) {
-  ms = Math.max(0, ms); const s = Math.ceil(ms / 1000);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-}
-function drawClocks() {
-  if (!game) return;
-  const elapsed = game.started && !game.over ? Date.now() - game.stamp : 0;
-  const me = game.color, opp = me === 'w' ? 'b' : 'w';
-  const val = (c) => game.clock[c] - (game.turn === c ? elapsed : 0);
-  for (const [el, c] of [[$('#botClock'), me], [$('#topClock'), opp]]) {
-    const v = val(c); el.textContent = fmt(v);
-    el.classList.toggle('active', game.turn === c && !game.over);
-    el.classList.toggle('low', v < 10000);
+/* ---------- drawing ---------- */
+function paintPlayers() {
+  const me = game ? (game.color === 'w' ? game.white : game.black) : { name: myName || 'You', rating: myRating };
+  const opp = game ? (game.color === 'w' ? game.black : game.white) : { name: 'Opponent', rating: '' };
+  for (const [k, p] of [['bot', me], ['top', opp]]) {
+    $(`#${k}Name`).textContent = p.name || '';
+    $(`#${k}Rating`).textContent = p.rating ? p.rating : '';
+    $(`#${k}Av`).textContent = (p.name || '?')[0].toUpperCase();
   }
 }
-
+function setStatus() {
+  if (!game || game.over) return;
+  const mine = game.chess.turn() === game.color, chk = game.chess.inCheck();
+  $('#status').textContent = chk ? (mine ? 'You are in check' : 'Check') : mine ? 'Your move' : "Opponent's move";
+}
+const fmt = (ms) => { const s = Math.ceil(Math.max(0, ms) / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+function drawClocks() {
+  const botC = $('#botClock'), topC = $('#topClock');
+  if (!game) { botC.textContent = topC.textContent = '--:--'; for (const c of [botC, topC]) c.className = 'clock'; $('#botCard').classList.remove('turn'); $('#topCard').classList.remove('turn'); return; }
+  const el = game.over ? 0 : Date.now() - game.stamp, me = game.color, opp = me === 'w' ? 'b' : 'w';
+  for (const [clockEl, card, c] of [[botC, $('#botCard'), me], [topC, $('#topCard'), opp]]) {
+    const v = game.clock[c] - (game.turn === c ? el : 0), on = game.turn === c && !game.over;
+    clockEl.textContent = fmt(v);
+    clockEl.classList.toggle('active', on); clockEl.classList.toggle('low', v < 10000);
+    card.classList.toggle('turn', on);
+  }
+}
 function render() {
-  const boardEl = $('#board'); boardEl.innerHTML = '';
-  if (!game) return;
-  const flip = game.color === 'b';
-  const grid = game.chess.board();
+  const chess = game ? game.chess : idleChess, flip = game?.color === 'b';
+  const grid = chess.board(), turn = chess.turn(), inCheck = chess.inCheck();
+  const boardEl = $('#board'); boardEl.replaceChildren();
   for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
-    const rr = flip ? 7 - r : r, cc = flip ? 7 - c : c;
-    const name = 'abcdefgh'[cc] + (8 - rr);
-    const p = grid[rr][cc];
+    const rr = flip ? 7 - r : r, cc = flip ? 7 - c : c, name = FILES[cc] + (8 - rr), p = grid[rr][cc];
     const el = document.createElement('div');
     el.className = 'sq ' + ((rr + cc) % 2 ? 'd' : 'l');
-    el.dataset.sq = name; el.tabIndex = 0;
-    if (game.last?.includes(name)) el.classList.add('last');
+    el.dataset.sq = name; el.tabIndex = game ? 0 : -1;
+    if (game?.last?.includes(name)) el.classList.add('last');
     if (selected === name) el.classList.add('sel');
     if (targets.includes(name)) { el.classList.add('target'); if (p) el.classList.add('cap'); }
-    if (p) el.innerHTML = `<img class="pc" draggable="false" alt="" src="/pieces/${p.color}${p.type.toUpperCase()}.svg">`;
+    if (inCheck && p && p.type === 'k' && p.color === turn) el.classList.add('chk');
+    if (p) { const img = document.createElement('img'); img.className = 'pc'; img.alt = ''; img.draggable = false; img.src = `/pieces/${p.color}${p.type.toUpperCase()}.svg`; el.appendChild(img); }
+    if (r === 7) el.insertAdjacentHTML('beforeend', `<i class="f">${FILES[cc]}</i>`);
+    if (c === 0) el.insertAdjacentHTML('beforeend', `<i class="r">${8 - rr}</i>`);
     el.addEventListener('click', () => onSquare(name));
     el.addEventListener('keydown', (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onSquare(name)));
     boardEl.appendChild(el);
   }
-  const m = $('#moves'); m.innerHTML = '';
-  game.moves.forEach((san, i) => {
-    if (i % 2 === 0) m.insertAdjacentHTML('beforeend', `<span class="n">${i / 2 + 1}.</span>`);
-    m.insertAdjacentHTML('beforeend', `<span>${san}</span>`);
+  const m = $('#moves'); m.replaceChildren();
+  (game?.moves || []).forEach((san, i) => {
+    if (i % 2 === 0) m.appendChild(Object.assign(document.createElement('span'), { className: 'n', textContent: `${i / 2 + 1}.` }));
+    const s = Object.assign(document.createElement('span'), { className: 'm' + (i === game.moves.length - 1 ? ' cur' : ''), textContent: san });
+    m.appendChild(s);
   });
   m.scrollTop = m.scrollHeight;
   drawClocks();
 }
-
 function onSquare(sq) {
   if (!game || game.over || game.chess.turn() !== game.color) return;
   if (selected && targets.includes(sq)) {
-    socket.emit('move', { gameId: game.id, from: selected, to: sq, promotion: 'q' }); // auto-queen
+    socket.emit('move', { gameId: game.id, from: selected, to: sq, promotion: 'q' }); // auto-queen for now
     selected = null; targets = []; return render();
   }
   const piece = game.chess.get(sq);
-  if (piece && piece.color === game.color) {
-    selected = sq;
-    targets = game.chess.moves({ square: sq, verbose: true }).map((m) => m.to);
-  } else { selected = null; targets = []; }
+  if (piece && piece.color === game.color) { selected = sq; targets = game.chess.moves({ square: sq, verbose: true }).map((m) => m.to); }
+  else { selected = null; targets = []; }
   render();
 }
+render(); paintPlayers();
 </script>
 </body>
 </html>
