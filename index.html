@@ -24,8 +24,10 @@
   .clock.active { background: var(--accent); color: #1b2430; }
   .clock.low { color: var(--loss); } .clock.active.low { background: var(--loss); color: #1b2430; }
 
-  .boardwrap { position: relative; }
-  #board { display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); aspect-ratio: 1; border-radius: 10px; overflow: hidden;
+  /* Isolate every board layer. Piece images have local z-index values; without this stacking context
+     they can escape above the result veil in some browsers (the supplied screenshot). */
+  .boardwrap { position: relative; isolation: isolate; }
+  #board { position: relative; z-index: 0; display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); aspect-ratio: 1; border-radius: 10px; overflow: hidden;
     box-shadow: 0 24px 40px -24px rgba(0,0,0,.8); user-select: none; touch-action: manipulation; }
   .sq { position: relative; display: grid; place-items: center; cursor: pointer; min-width: 0; min-height: 0; }
   .sq.l { background-color: var(--light); } .sq.d { background-color: var(--dark); }
@@ -49,10 +51,10 @@
   @keyframes land { from { transform: scale(1.12); } to { transform: scale(1); } }
   .sq:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
 
-  .veil { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 10px;
+  .veil { position: absolute; inset: 0; z-index: 50; display: grid; place-items: center; border-radius: 10px;
     background: rgba(16,22,29,.66); backdrop-filter: blur(2px); }
   /* promotion picker: a column of four pieces dropping from (or rising to) the promotion square */
-  .promo { position: absolute; inset: 0; z-index: 4; background: rgba(10,14,19,.55); border-radius: 10px; }
+  .promo { position: absolute; inset: 0; z-index: 40; background: rgba(10,14,19,.55); border-radius: 10px; }
   .promo-col { position: absolute; width: 12.5%; display: flex; background: var(--panel); border-radius: 10px;
     box-shadow: 0 12px 32px rgba(0,0,0,.6); overflow: hidden; border: 1px solid var(--line); }
   .promo-col.down { flex-direction: column; } .promo-col.up { flex-direction: column-reverse; }
@@ -113,6 +115,39 @@
   .foot { color: var(--muted); font-size: .85rem; margin: 0; }
   .empty { color: var(--muted); margin: 0; }
   .hidden { display: none !important; }
+  .panel h3 { margin: 14px 0 7px; font-size: .9rem; }
+  .chat-log { display:flex; flex-direction:column; gap:7px; height:180px; overflow:auto; padding:9px; margin:0 0 10px;
+    border:1px solid var(--line); border-radius:8px; background:var(--bg); }
+  .chat-msg { display:grid; grid-template-columns:auto 1fr; gap:3px 7px; font-size:.86rem; overflow-wrap:anywhere; }
+  .chat-msg b { color:var(--accent); } .chat-msg time { color:var(--muted); font-size:.72rem; }
+  .chat-msg p { grid-column:1/-1; margin:0; white-space:pre-wrap; }
+  .inline-form { display:flex; gap:7px; align-items:center; }
+  .inline-form input { min-width:0; flex:1; }
+  .inline-form button { flex:none; }
+  .social-list { display:grid; gap:7px; }
+  .social-item { display:flex; align-items:center; gap:8px; padding:8px 9px; border:1px solid var(--line); border-radius:8px; background:var(--bg); }
+  .social-item .social-name { min-width:0; overflow-wrap:anywhere; }
+  .social-item small { color:var(--muted); display:block; font-size:.76rem; }
+  .social-item .spacer { flex:1; }
+  .social-item button { padding:5px 8px; font-size:.78rem; }
+  .social-item button.danger { color:var(--loss); }
+  .social-note { min-height:1.2em; color:var(--muted); font-size:.8rem; margin:8px 0 0; }
+  .tournament-form { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
+  .tournament-form .wide { grid-column:1/-1; }
+  .tournament-form select { width:100%; padding:9px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); font:inherit; }
+  .tournament-row { display:grid; gap:6px; padding:10px 0; border-top:1px solid var(--line); }
+  .tournament-row:first-child { border-top:0; }
+  .tournament-meta { color:var(--muted); font-size:.78rem; }
+  .tournament-bracket { display:grid; gap:5px; margin-top:6px; padding-left:10px; border-left:2px solid var(--line); }
+  .tournament-bracket div { display:grid; grid-template-columns:auto 1fr; gap:2px 8px; font-size:.8rem; }
+  .tournament-bracket b { color:var(--muted); } .tournament-bracket small { grid-column:2; color:var(--muted); }
+  .moderation-card { border-top:1px solid var(--line); padding:10px 0; }
+  .moderation-card:first-child { border-top:0; }
+  .moderation-card p { margin:4px 0 8px; font-size:.86rem; overflow-wrap:anywhere; }
+  .moderation-actions { display:flex; gap:6px; flex-wrap:wrap; }
+  .moderation-actions button { padding:5px 8px; font-size:.78rem; }
+  .moderation-actions .danger { color:var(--loss); }
+  @media (max-width:520px) { .social-item { flex-wrap:wrap; } .social-item .spacer { display:none; } }
 </style>
 </head>
 <body>
@@ -163,15 +198,64 @@
       <div id="moves"></div>
       <div class="actions" id="actions">
         <button id="drawBtn">Offer draw</button>
+        <button id="reportOpponent">Report opponent</button>
         <button id="resign">Resign</button>
       </div>
       <p class="note" id="drawNote" role="status" aria-live="polite"></p>
+    </div>
+
+    <div class="panel hidden" id="chatPanel">
+      <h2>Game chat</h2>
+      <div class="chat-log" id="chatMessages" aria-live="polite" aria-label="Game chat messages"></div>
+      <form class="inline-form" id="chatForm">
+        <input id="chatInput" maxlength="240" autocomplete="off" placeholder="Message your opponent…" aria-label="Chat message">
+        <button class="primary" type="submit">Send</button>
+      </form>
+      <p class="social-note" id="chatNote" role="status" aria-live="polite"></p>
     </div>
 
     <div class="panel">
       <h2>Settings</h2>
       <label class="switch"><input type="checkbox" id="soundToggle" checked> Sound effects</label>
       <p class="hint">While waiting for your opponent, click a piece and a square to queue a premove. Right-click, press Esc or tap an empty square to cancel it.</p>
+    </div>
+
+    <div class="panel" id="friendsPanel">
+      <h2>Friends</h2>
+      <p class="hint" id="friendsAccess">Log in to add friends and manage requests.</p>
+      <form class="inline-form" id="friendForm">
+        <input id="friendUsername" maxlength="16" autocomplete="off" placeholder="Find by username" aria-label="Username to add">
+        <button type="submit">Add</button>
+      </form>
+      <p class="social-note" id="friendNote" role="status" aria-live="polite"></p>
+      <h3>Friend requests</h3>
+      <div class="social-list" id="friendRequests"><p class="empty">No pending requests.</p></div>
+      <h3>Your friends</h3>
+      <div class="social-list" id="friendList"><p class="empty">No friends yet.</p></div>
+    </div>
+
+    <div class="panel" id="tournamentPanel">
+      <h2>Tournaments</h2>
+      <p class="hint" id="tournamentAccess">Log in to create or enter tournaments.</p>
+      <form class="tournament-form" id="tournamentForm">
+        <div class="wide"><label for="tournamentName">Tournament name</label><input id="tournamentName" maxlength="40" placeholder="Friday blitz cup" required></div>
+        <div><label for="tournamentBase">Time control</label><select id="tournamentBase"><option value="180">3 min</option><option value="300" selected>5 min</option><option value="600">10 min</option><option value="900">15 min</option></select></div>
+        <div><label for="tournamentInc">Increment</label><select id="tournamentInc"><option value="0" selected>0 sec</option><option value="2">2 sec</option><option value="5">5 sec</option><option value="10">10 sec</option></select></div>
+        <div class="wide"><label for="tournamentSize">Players</label><select id="tournamentSize"><option value="4">4 players</option><option value="8" selected>8 players</option><option value="16">16 players</option></select></div>
+        <button class="primary wide" type="submit">Create tournament</button>
+      </form>
+      <p class="social-note" id="tournamentNote" role="status" aria-live="polite"></p>
+      <div id="tournamentList"><p class="empty">No tournaments listed.</p></div>
+      <p class="hint">Single-elimination brackets. All entrants must be online when the host starts the event.</p>
+    </div>
+
+    <div class="panel hidden" id="moderationPanel">
+      <h2>Moderator review</h2>
+      <p class="hint">Reports and timing signals are review leads, not proof of cheating.</p>
+      <h3>Player reports</h3>
+      <div id="moderationReports"><p class="empty">No reports.</p></div>
+      <h3>Game integrity signals</h3>
+      <div id="integrityFlags"><p class="empty">No flags.</p></div>
     </div>
 
     <div class="panel"><h2>Top players</h2><ol class="lb" id="lb"></ol></div>
@@ -193,6 +277,7 @@ const socket = io();
 let pid = localStorage.getItem('pid') || crypto.randomUUID();
 localStorage.setItem('pid', pid);
 $('#name').value = localStorage.getItem('name') || '';
+let myId = null, myAuthed = false, myAdmin = false;
 
 /* ---------- sounds (synthesised with Web Audio: no audio files to host or license) ---------- */
 const Sound = (() => {
@@ -266,20 +351,41 @@ const sb = window.ZZ?.sb || null;
 let token = null, tokenBroken = false;
 const useToken = () => (token && !tokenBroken ? token : undefined);
 const hello = () => socket.emit('hello', { id: pid, name: $('#name').value.trim() || 'Guest', token: useToken() });
+async function apiRequest(url, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  const authToken = useToken() || window.ZZ?.session?.access_token;
+  if (authToken) headers.Authorization = 'Bearer ' + authToken;
+  if (options.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+  const response = await fetch(url, { ...options, headers });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `Request failed (${response.status}).`);
+  return payload;
+}
+function renderSocialAccess() {
+  const ok = myAuthed || Boolean(useToken() || window.ZZ?.session?.access_token);
+  $('#friendsAccess').textContent = ok ? 'Search by username to send a friend request.' : 'Log in to add friends and manage requests.';
+  $('#tournamentAccess').textContent = ok ? 'Create a bracket or join an open tournament.' : 'Log in to create or enter tournaments.';
+  $('#friendUsername').disabled = !ok; $('#friendForm button').disabled = !ok;
+  $('#tournamentForm').querySelectorAll('input,select,button').forEach((el) => { el.disabled = !ok; });
+}
 
 /* ---------- connection and account ---------- */
 socket.on('connect', hello);
 socket.on('me', (m) => {
   myName = m.name; myRating = m.rating;
+  myId = m.id; myAuthed = !!m.authed; myAdmin = !!m.isAdmin;
   $('#me').textContent = m.authed ? '' : 'Playing as a guest: your rating is not saved. Log in to keep it.';
-  paintPlayers();
+  paintPlayers(); renderSocialAccess(); loadSocial();
 });
 socket.on('autherror', (e) => {
   $('#me').textContent = e.text;
   if (e.signOut) { token = null; sb?.auth.signOut(); }
   else { tokenBroken = true; updateAuthUI(); hello(); }
 });
-function updateAuthUI() { $('#nameWrap').classList.toggle('hidden', !useToken()); }
+function updateAuthUI() {
+  $('#nameWrap').classList.toggle('hidden', Boolean(useToken()));
+  renderSocialAccess();
+}
 if (sb) {
   const sync = () => { token = ZZ.session?.access_token || null; updateAuthUI(); hello(); };
   ZZ.ready.then(sync);
@@ -302,6 +408,228 @@ async function loadBoard() {
   } catch {}
 }
 loadBoard();
+
+/* ---------- chat, friends, tournaments and moderation UI ---------- */
+function appendChatMessage(message) {
+  const list = $('#chatMessages');
+  const empty = list.querySelector('.empty'); if (empty) empty.remove();
+  const item = document.createElement('div'); item.className = 'chat-msg';
+  const name = document.createElement('b'); name.textContent = message.name || 'Player';
+  const time = document.createElement('time');
+  time.dateTime = new Date(message.at || Date.now()).toISOString();
+  time.textContent = new Date(message.at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const body = document.createElement('p'); body.textContent = message.text || '';
+  item.append(name, time, body); list.appendChild(item); list.scrollTop = list.scrollHeight;
+}
+function renderChat(messages) {
+  const list = $('#chatMessages'); list.replaceChildren();
+  if (!messages?.length) {
+    const empty = document.createElement('p'); empty.className = 'empty'; empty.textContent = 'Say hello to your opponent.'; list.appendChild(empty);
+    return;
+  }
+  messages.forEach(appendChatMessage);
+}
+function socialItem(name, detail) {
+  const item = document.createElement('div'); item.className = 'social-item';
+  const info = document.createElement('div'); info.className = 'social-name';
+  const strong = document.createElement('b'); strong.textContent = name;
+  const small = document.createElement('small'); small.textContent = detail || '';
+  info.append(strong, small); item.appendChild(info);
+  const spacer = document.createElement('span'); spacer.className = 'spacer'; item.appendChild(spacer);
+  return item;
+}
+function addActionButton(parent, label, attrs = {}) {
+  const button = document.createElement('button'); button.type = 'button'; button.textContent = label;
+  for (const [key, value] of Object.entries(attrs)) button.dataset[key] = String(value);
+  parent.appendChild(button); return button;
+}
+async function loadFriends() {
+  if (!myAuthed && !useToken() && !window.ZZ?.session?.access_token) return;
+  try {
+    const data = await apiRequest('/api/friends');
+    const requests = $('#friendRequests'), friends = $('#friendList');
+    requests.replaceChildren(); friends.replaceChildren();
+    for (const person of data.incoming || []) {
+      const item = socialItem(person.username, `Rating ${person.rating} · wants to connect`);
+      addActionButton(item, 'Accept', { friendAction: 'accept', requestId: person.requestId });
+      addActionButton(item, 'Decline', { friendAction: 'decline', requestId: person.requestId });
+      requests.appendChild(item);
+    }
+    for (const person of data.outgoing || []) {
+      requests.appendChild(socialItem(person.username, 'Request sent · pending'));
+    }
+    if (!requests.children.length) requests.innerHTML = '<p class="empty">No pending requests.</p>';
+    for (const person of data.friends || []) {
+      const item = socialItem(person.username, `Rating ${person.rating}`);
+      addActionButton(item, 'Remove', { friendAction: 'remove', userId: person.id }).classList.add('danger');
+      friends.appendChild(item);
+    }
+    if (!friends.children.length) friends.innerHTML = '<p class="empty">No friends yet.</p>';
+  } catch (error) { $('#friendNote').textContent = error.message; }
+}
+
+async function loadTournaments() {
+  if (!myAuthed && !useToken() && !window.ZZ?.session?.access_token) return;
+  try {
+    const data = await apiRequest('/api/tournaments');
+    const list = $('#tournamentList'); list.replaceChildren();
+    for (const t of data.tournaments || []) {
+      const row = document.createElement('div'); row.className = 'tournament-row';
+      const title = document.createElement('b'); title.textContent = t.name;
+      const meta = document.createElement('div'); meta.className = 'tournament-meta';
+      const control = `${Math.round(t.base / 60)}+${t.inc}`;
+      meta.textContent = `${t.status.toUpperCase()} · ${t.player_count}/${t.max_players} players · ${control}`;
+      row.append(title, meta);
+      if (t.status === 'completed' && t.winner_name) {
+        const champion = document.createElement('small'); champion.textContent = `Champion: ${t.winner_name}`; row.appendChild(champion);
+      }
+      if (t.status === 'open' && t.creator_id === data.playerId) {
+        addActionButton(row, 'Start', { tournamentAction: 'start', tournamentId: t.id }).classList.add('primary');
+      } else if (t.status === 'open' && !t.joined) {
+        addActionButton(row, 'Join', { tournamentAction: 'join', tournamentId: t.id });
+      } else if (t.joined) {
+        const joined = document.createElement('small'); joined.textContent = 'You are entered'; row.appendChild(joined);
+      }
+      if (t.matches?.length) {
+        const bracket = document.createElement('div'); bracket.className = 'tournament-bracket';
+        for (const match of t.matches) {
+          const line = document.createElement('div');
+          const round = document.createElement('b'); round.textContent = `Round ${match.round}`;
+          const pairing = document.createElement('span'); pairing.textContent = `${match.player_a_name} vs ${match.player_b_name}`;
+          const outcome = document.createElement('small');
+          outcome.textContent = match.status === 'playing' ? 'In progress' : match.winner_name ? `${match.winner_name} advances (${match.result || 'won'})` : (match.result === '1/2-1/2' ? 'Draw · replay pending' : 'Pending');
+          line.append(round, pairing, outcome); bracket.appendChild(line);
+        }
+        row.appendChild(bracket);
+      }
+      list.appendChild(row);
+    }
+    if (!list.children.length) list.innerHTML = '<p class="empty">No tournaments yet. Create one to get started.</p>';
+  } catch (error) { $('#tournamentNote').textContent = error.message; }
+}
+
+async function loadModeration() {
+  if (!myAdmin) return;
+  $('#moderationPanel').classList.remove('hidden');
+  try {
+    const [reports, flags] = await Promise.all([
+      apiRequest('/api/mod/reports'), apiRequest('/api/mod/integrity')
+    ]);
+    const reportList = $('#moderationReports'); reportList.replaceChildren();
+    for (const report of reports) {
+      const card = document.createElement('div'); card.className = 'moderation-card';
+      const heading = document.createElement('b'); heading.textContent = `${report.reporter_name} → ${report.reported_name} · ${report.status}`;
+      const detail = document.createElement('p'); detail.textContent = `${report.reason} · Game ${report.game_id || 'unknown'}`;
+      card.append(heading, detail);
+      if (report.status === 'open') {
+        const actions = document.createElement('div'); actions.className = 'moderation-actions';
+        if (report.reported_id) {
+          addActionButton(actions, 'Warn', { modAction: 'warn', targetId: report.reported_id, reportId: report.id });
+          addActionButton(actions, 'Mute 10m', { modAction: 'mute', durationMinutes: 10, targetId: report.reported_id, reportId: report.id });
+          addActionButton(actions, 'Ban', { modAction: 'ban', targetId: report.reported_id, reportId: report.id }).classList.add('danger');
+        }
+        addActionButton(actions, 'Dismiss', { reportStatus: 'dismissed', reportId: report.id });
+        card.appendChild(actions);
+      }
+      reportList.appendChild(card);
+    }
+    if (!reportList.children.length) reportList.innerHTML = '<p class="empty">No reports.</p>';
+
+    const flagList = $('#integrityFlags'); flagList.replaceChildren();
+    for (const flag of flags) {
+      const card = document.createElement('div'); card.className = 'moderation-card';
+      const heading = document.createElement('b'); heading.textContent = `${flag.player_name} · ${flag.signal} · ${flag.reviewed ? 'reviewed' : 'needs review'}`;
+      const detail = document.createElement('p'); detail.textContent = `Game ${flag.game_id} · ${JSON.stringify(flag.details || {})}`;
+      card.append(heading, detail);
+      if (!flag.reviewed) addActionButton(card, 'Mark reviewed', { integrityReview: flag.id });
+      flagList.appendChild(card);
+    }
+    if (!flagList.children.length) flagList.innerHTML = '<p class="empty">No integrity flags.</p>';
+  } catch (error) {
+    $('#moderationReports').textContent = error.message;
+  }
+}
+
+function loadSocial() {
+  renderSocialAccess();
+  if (!myAuthed && !useToken() && !window.ZZ?.session?.access_token) {
+    $('#friendRequests').innerHTML = '<p class="empty">Log in to view requests.</p>';
+    $('#friendList').innerHTML = '<p class="empty">Log in to view friends.</p>';
+    $('#tournamentList').innerHTML = '<p class="empty">Log in to view tournaments.</p>';
+    $('#moderationPanel').classList.add('hidden');
+    return;
+  }
+  loadFriends(); loadTournaments();
+  if (myAdmin) loadModeration();
+}
+
+$('#friendForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const username = $('#friendUsername').value.trim(); if (!username) return;
+  $('#friendNote').textContent = '';
+  try {
+    const result = await apiRequest('/api/friends/request', { method: 'POST', body: JSON.stringify({ username }) });
+    $('#friendNote').textContent = result.message || 'Friend request sent.';
+    $('#friendUsername').value = ''; await loadFriends();
+  } catch (error) { $('#friendNote').textContent = error.message; }
+});
+$('#friendRequests').addEventListener('click', async (e) => {
+  const button = e.target.closest('button[data-friend-action]'); if (!button) return;
+  try {
+    const action = button.dataset.friendAction;
+    if (action === 'remove') await apiRequest('/api/friends/remove', { method: 'POST', body: JSON.stringify({ userId: button.dataset.userId }) });
+    else await apiRequest('/api/friends/respond', { method: 'POST', body: JSON.stringify({ requestId: Number(button.dataset.requestId), accept: action === 'accept' }) });
+    await loadFriends();
+  } catch (error) { $('#friendNote').textContent = error.message; }
+});
+$('#friendList').addEventListener('click', async (e) => {
+  const button = e.target.closest('button[data-friend-action="remove"]'); if (!button) return;
+  try {
+    await apiRequest('/api/friends/remove', { method: 'POST', body: JSON.stringify({ userId: button.dataset.userId }) });
+    await loadFriends();
+  } catch (error) { $('#friendNote').textContent = error.message; }
+});
+$('#tournamentForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    const result = await apiRequest('/api/tournaments', { method: 'POST', body: JSON.stringify({
+      name: $('#tournamentName').value.trim(), base: Number($('#tournamentBase').value),
+      inc: Number($('#tournamentInc').value), maxPlayers: Number($('#tournamentSize').value)
+    }) });
+    $('#tournamentNote').textContent = `Created “${result.tournament.name}”. Invite players, then start when everyone is online.`;
+    $('#tournamentName').value = ''; await loadTournaments();
+  } catch (error) { $('#tournamentNote').textContent = error.message; }
+});
+$('#tournamentList').addEventListener('click', async (e) => {
+  const button = e.target.closest('button[data-tournament-action]'); if (!button) return;
+  const action = button.dataset.tournamentAction;
+  try {
+    const result = await apiRequest(`/api/tournaments/${action === 'start' ? 'start' : 'join'}`, {
+      method: 'POST', body: JSON.stringify({ tournamentId: button.dataset.tournamentId })
+    });
+    $('#tournamentNote').textContent = result.message || (action === 'start' ? 'Tournament started.' : 'Joined tournament.');
+    await loadTournaments();
+  } catch (error) { $('#tournamentNote').textContent = error.message; }
+});
+$('#moderationPanel').addEventListener('click', async (e) => {
+  const button = e.target.closest('button'); if (!button) return;
+  try {
+    if (button.dataset.modAction) {
+      await apiRequest('/api/mod/action', { method: 'POST', body: JSON.stringify({
+        action: button.dataset.modAction, targetId: button.dataset.targetId,
+        durationMinutes: Number(button.dataset.durationMinutes) || 0,
+        reportId: Number(button.dataset.reportId) || null, reason: 'Reviewed player report'
+      }) });
+    } else if (button.dataset.reportStatus) {
+      await apiRequest('/api/mod/report-status', { method: 'POST', body: JSON.stringify({
+        id: Number(button.dataset.reportId), status: button.dataset.reportStatus
+      }) });
+    } else if (button.dataset.integrityReview) {
+      await apiRequest('/api/mod/integrity/review', { method: 'POST', body: JSON.stringify({ id: Number(button.dataset.integrityReview) }) });
+    }
+    await loadModeration();
+  } catch (error) { $('#moderationReports').textContent = error.message; }
+});
 
 /* ---------- veil (overlay on the board) ---------- */
 function veil(o) {
@@ -333,6 +661,23 @@ $('#drawBtn').addEventListener('click', () => {
 $('#drawAccept').addEventListener('click', () => game && socket.emit('drawAccept', { gameId: game.id }));
 $('#drawDecline').addEventListener('click', () => game && socket.emit('drawDecline', { gameId: game.id }));
 $('#preCancel').addEventListener('click', () => cancelPremove());
+$('#reportOpponent').addEventListener('click', () => {
+  if (!game || game.over) return;
+  const reason = prompt('What should the moderators review? Include specific details.');
+  if (!reason) return;
+  socket.emit('reportOpponent', { gameId: game.id, reason }, (reply) => {
+    $('#drawNote').textContent = reply?.message || reply?.error || 'Could not submit report.';
+  });
+});
+$('#chatForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (!game || game.over) return;
+  const text = $('#chatInput').value;
+  socket.emit('chat', { gameId: game.id, text }, (reply) => {
+    if (reply?.ok) { $('#chatInput').value = ''; $('#chatNote').textContent = ''; }
+    else $('#chatNote').textContent = reply?.error || 'Message was not sent.';
+  });
+});
 socket.on('waiting', (key) => veil({ title: 'Finding an opponent', sub: `Time control ${key.replace('+', ' + ')}`, spin: true,
   button: { label: 'Cancel', onClick: () => { socket.emit('cancelSeek'); idleVeil(); } } }));
 
@@ -344,6 +689,7 @@ socket.on('start', (s) => {
   selected = null; targets = []; closePromo();
   veil(null);
   $('#lobby').classList.add('hidden'); $('#gamePanel').classList.remove('hidden'); $('#actions').classList.remove('hidden');
+  $('#chatPanel').classList.remove('hidden'); renderChat(s.chat || []); $('#chatNote').textContent = '';
   $('#youAre').textContent = `You are playing ${s.color === 'w' ? 'White' : 'Black'}`;
   $('#oppStatus').textContent = ''; $('#drawNote').textContent = '';
   paintPlayers(); setStatus(); render();
@@ -360,6 +706,16 @@ socket.on('state', (s) => {
   Sound.play(Sound.forMove(s.san));
   runPremove();
   setStatus(); render();
+});
+
+socket.on('chatMessage', (message) => appendChatMessage(message));
+socket.on('tournamentUpdate', () => { if (myAuthed) loadTournaments(); });
+socket.on('moderationNotice', (notice) => {
+  const action = notice.action === 'mute' ? 'Your chat has been muted.'
+    : notice.action === 'unmute' ? 'Your chat mute has been lifted.'
+    : notice.action === 'warn' ? 'Moderator warning: ' + (notice.reason || 'Please follow the community rules.')
+    : 'A moderation action was applied to your account.';
+  $('#chatNote').textContent = action;
 });
 
 /* ---------- draw offers ---------- */
@@ -401,6 +757,7 @@ socket.on('over', (o) => {
     button: { label: 'Play again', primary: true, onClick: () => {
       game = null; selected = null; targets = [];
       $('#gamePanel').classList.add('hidden'); $('#lobby').classList.remove('hidden');
+      $('#chatPanel').classList.add('hidden');
       paintPlayers(); drawClocks(); render(); idleVeil();
     } }
   });
@@ -412,7 +769,7 @@ function paintPlayers() {
   const opp = game ? (game.color === 'w' ? game.black : game.white) : { name: 'Opponent', rating: '' };
   for (const [k, p] of [['bot', me], ['top', opp]]) {
     $(`#${k}Name`).textContent = p.name || '';
-    $(`#${k}Rating`).textContent = p.rating ? p.rating : '';
+    $(`#${k}Rating`).textContent = p.rating ? `${p.rating}${p.rd ? ` · RD ${Math.round(p.rd)}` : ''}` : '';
     $(`#${k}Av`).textContent = (p.name || '?')[0].toUpperCase();
   }
 }

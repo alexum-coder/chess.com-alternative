@@ -16,6 +16,7 @@
   .rating { text-align:right; }
   .rating b { display:block; font-size:3.4rem; line-height:1; letter-spacing:-.03em; color:var(--accent); }
   .rating span { color:var(--muted); font-size:.9rem; }
+  .rating small { display:block; color:var(--muted); font-size:.78rem; }
   .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px; }
   @media (max-width:560px){ .stats{ grid-template-columns:repeat(2,1fr); } }
   .stat { background:var(--panel); border-radius:8px; padding:14px 16px; }
@@ -44,7 +45,7 @@
 <main id="app" class="hidden">
   <section class="panel hero">
     <div><h1 id="uname"></h1><p class="sub" id="since"></p></div>
-    <div class="rating"><b id="rating">1200</b><span>rating</span></div>
+    <div class="rating"><b id="rating">1200</b><span>Glicko-2 rating</span><small id="rd">Rating deviation: 350</small></div>
   </section>
 
   <section class="stats" aria-label="Record">
@@ -99,6 +100,7 @@
   const showMe = () => {
     $('#uname').textContent = me.name;
     $('#rating').textContent = me.rating;
+    $('#rd').textContent = `Rating deviation: ${Math.round(me.rd ?? 350)}`;
     $('#since').textContent = me.since ? 'Member since ' + new Date(me.since).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : '';
     $('#newName').value = me.name;
   };
