@@ -298,6 +298,26 @@ app.post('/api/mod/report-status', async (req, res) => {
   res.json({ ok: true });
 });
 
+
+// Browser Stockfish assets are served same-origin so Worker() can load the JS/WASM pair.
+const stockfishDir = path.join(__dirname, 'node_modules', 'stockfish');
+if (fs.existsSync(stockfishDir)) app.use('/vendor/stockfish', express.static(stockfishDir, { immutable: true, maxAge: '1y' }));
+
+// Public CC0 puzzle pool imported from the Lichess puzzle CSV (see puzzle-import.js).
+app.get('/api/puzzles/random', async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Puzzle database is not configured.' });
+  const min = Math.max(0, Math.min(3000, Number(req.query.min) || 0));
+  const max = Math.max(min, Math.min(3500, Number(req.query.max) || 3500));
+  const filter = (q) => q.gte('rating', min).lte('rating', max);
+  const { count, error: countError } = await filter(db.from('puzzles').select('puzzle_id', { count: 'exact', head: true }));
+  if (countError) return res.status(500).json({ error: 'Could not load puzzles.' });
+  if (!count) return res.status(404).json({ error: 'No puzzles in this rating range. Import the Lichess CC0 puzzle database first.' });
+  const offset = Math.floor(Math.random() * count);
+  const { data, error } = await filter(db.from('puzzles').select('puzzle_id,fen,moves,rating,themes')).range(offset, offset);
+  if (error || !data?.length) return res.status(500).json({ error: 'Could not load a puzzle.' });
+  res.json(data[0]);
+});
+
 app.get('/', (req, res) => res.sendFile(path.join(pub, 'index.html')));
 app.use(express.static(pub, { index: false }));
 console.log('Serving client from', pub);

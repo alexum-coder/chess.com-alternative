@@ -32,10 +32,12 @@
     return e;
   };
   const nav = document.createElement('nav');
-  for (const [label, href] of [['Play', '/'], ['Tournaments', '/#tournamentPanel'], ['Profile', '/profile.html']]) {
+  for (const [label, href] of [['Play', '/'], ['Computer', '/computer.html'], ['Puzzles', '/puzzles.html'], ['Tournaments', '/#tournamentPanel'], ['Profile', '/profile.html']]) {
     const a = mk('a', '', label, href);
     if ((href === '/' && (location.pathname === '/' || location.pathname === '/index.html'))
-        || (href === '/profile.html' && location.pathname === href)) a.setAttribute('aria-current', 'page');
+        || (href === '/profile.html' && location.pathname === href)
+        || (href === '/computer.html' && location.pathname === href)
+        || (href === '/puzzles.html' && location.pathname === href)) a.setAttribute('aria-current', 'page');
     nav.appendChild(a);
   }
   const box = mk('div', 'zzuser');

@@ -183,3 +183,18 @@ $$;
 revoke all on function public.finalize_chess_game(text, uuid, uuid, text, text, text, text, text, int, int, int, double precision, double precision, int, int, double precision, double precision, int) from public;
 revoke all on function public.finalize_chess_game(text, uuid, uuid, text, text, text, text, text, int, int, int, double precision, double precision, int, int, double precision, double precision, int) from anon, authenticated;
 grant execute on function public.finalize_chess_game(text, uuid, uuid, text, text, text, text, text, int, int, int, double precision, double precision, int, int, double precision, double precision, int) to service_role;
+
+-- Lichess open puzzle database (CC0). Import with: npm run import:puzzles -- /path/to/lichess_db_puzzle.csv.zst
+create table if not exists public.puzzles (
+  puzzle_id text primary key,
+  fen text not null,
+  moves text not null,
+  rating integer not null default 1500,
+  themes text[] not null default '{}',
+  game_url text,
+  created_at timestamptz not null default now()
+);
+create index if not exists puzzles_rating_idx on public.puzzles(rating);
+alter table public.puzzles enable row level security;
+drop policy if exists "Puzzles are publicly readable" on public.puzzles;
+create policy "Puzzles are publicly readable" on public.puzzles for select using (true);
