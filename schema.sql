@@ -72,6 +72,7 @@ create table if not exists tournament_matches (
   status text not null default 'pending' check (status in ('pending', 'playing', 'done')),
   created_at timestamptz not null default now()
 );
+alter table tournament_matches add column if not exists game_state jsonb;
 create index if not exists tournament_matches_round on tournament_matches(tournament_id, round);
 
 -- Reports are reviewed by human moderators. Signals are review queues, never automatic bans.
@@ -122,7 +123,63 @@ alter table moderation_reports enable row level security;
 alter table moderation_actions enable row level security;
 alter table integrity_flags enable row level security;
 
+-- Profile data (especially provisional ratings) is served through Express APIs only.
 drop policy if exists "profiles are public" on profiles;
-create policy "profiles are public" on profiles for select using (true);
 drop policy if exists "games are public" on games;
 create policy "games are public" on games for select using (true);
+
+
+-- Finalizing a game and updating both ratings must be one transaction. The unique
+-- games.id is the idempotency key used by tournament recovery after a process crash.
+create or replace function public.finalize_chess_game(
+  p_game_id text,
+  p_white_id uuid,
+  p_black_id uuid,
+  p_white_name text,
+  p_black_name text,
+  p_result text,
+  p_reason text,
+  p_pgn text,
+  p_base int,
+  p_inc int,
+  p_white_rating int,
+  p_white_deviation double precision,
+  p_white_volatility double precision,
+  p_white_games int,
+  p_black_rating int,
+  p_black_deviation double precision,
+  p_black_volatility double precision,
+  p_black_games int
+) returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  inserted_game_id text;
+begin
+  insert into games (id, white, black, white_name, black_name, result, reason, pgn, base, inc)
+  values (p_game_id, p_white_id, p_black_id, p_white_name, p_black_name, p_result, p_reason, p_pgn, p_base, p_inc)
+  on conflict (id) do nothing
+  returning id into inserted_game_id;
+
+  if inserted_game_id is null then
+    return false;
+  end if;
+
+  if p_white_id is not null then
+    update profiles set rating = p_white_rating, rating_deviation = p_white_deviation,
+      volatility = p_white_volatility, games_played = p_white_games where id = p_white_id;
+  end if;
+  if p_black_id is not null then
+    update profiles set rating = p_black_rating, rating_deviation = p_black_deviation,
+      volatility = p_black_volatility, games_played = p_black_games where id = p_black_id;
+  end if;
+
+  return true;
+end;
+$$;
+
+revoke all on function public.finalize_chess_game(text, uuid, uuid, text, text, text, text, text, int, int, int, double precision, double precision, int, int, double precision, double precision, int) from public;
+revoke all on function public.finalize_chess_game(text, uuid, uuid, text, text, text, text, text, int, int, int, double precision, double precision, int, int, double precision, double precision, int) from anon, authenticated;
+grant execute on function public.finalize_chess_game(text, uuid, uuid, text, text, text, text, text, int, int, int, double precision, double precision, int, int, double precision, double precision, int) to service_role;

@@ -6,7 +6,10 @@ const { Server } = require('socket.io');
 const { Chess } = require('chess.js');
 const crypto = require('crypto');
 const { updateGlicko2 } = require('./glicko2');
-
+const { StockfishAnalyzer } = require('./stockfish-analyzer');
+const { reviewGameMoves } = require('./engine-review');
+const { serializeTournamentGame, restoreChess, hydrateTournamentState } = require('./tournament-recovery');
+const { RATING_PLACEMENT_GAMES, publicPlayer } = require('./rating-status');
 const db = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false } })
   : null;
@@ -28,7 +31,7 @@ app.get('/config.js', (req, res) => {
 app.get('/api/leaderboard', async (req, res) => {
   if (!db) return res.json([]);
   const { data } = await db.from('profiles').select('username,rating,games_played')
-    .gt('games_played', 0).order('rating', { ascending: false }).limit(10);
+    .gte('games_played', RATING_PLACEMENT_GAMES).order('rating', { ascending: false }).limit(10);
   res.json(data || []);
 });
 
@@ -59,7 +62,7 @@ async function accountFor(token) {
       rating: prof.rating,
       rd: prof.rating_deviation ?? 350,
       volatility: prof.volatility ?? 0.06,
-      games: prof.games_played,
+      games: prof.games_played || 0,
       since: prof.created_at,
       banned: activeActions.some((a) => a.action === 'ban'),
       muted: activeActions.some((a) => a.action === 'mute'),
@@ -95,14 +98,15 @@ function allowRate(key, max, windowMs) {
   return entry.count <= max;
 }
 
+
 app.use(express.json());
 app.get('/api/me', async (req, res) => {
   if (!db) return res.status(503).json({ error: 'Accounts are not set up.' });
   try {
     const acct = await accountFor(bearer(req));
     res.json({
-      id: acct.id, name: acct.name, rating: acct.rating, rd: acct.rd, volatility: acct.volatility,
-      games: acct.games, since: acct.since, authed: true, isAdmin: isAdmin(acct.id)
+      id: acct.id, name: acct.name, ...publicPlayer(acct), volatility: acct.volatility,
+      since: acct.since, authed: true, isAdmin: isAdmin(acct.id)
     });
   }
   catch (e) {
@@ -133,7 +137,7 @@ app.get('/api/friends', async (req, res) => {
   if (error) return res.status(500).json({ error: 'Could not load friends.' });
   const ids = [...new Set((links || []).map((x) => x.requester_id === acct.id ? x.addressee_id : x.requester_id))];
   const { data: profiles } = ids.length
-    ? await db.from('profiles').select('id,username,rating').in('id', ids)
+    ? await db.from('profiles').select('id,username,rating,games_played').in('id', ids)
     : { data: [] };
   const byId = new Map((profiles || []).map((p) => [p.id, p]));
   const friends = [], incoming = [], outgoing = [];
@@ -141,7 +145,9 @@ app.get('/api/friends', async (req, res) => {
     const otherId = link.requester_id === acct.id ? link.addressee_id : link.requester_id;
     const other = byId.get(otherId);
     if (!other) continue;
-    const item = { id: other.id, username: other.username, rating: other.rating, requestId: link.id };
+    const games = other.games_played || 0;
+    const item = { id: other.id, username: other.username, rating: games >= RATING_PLACEMENT_GAMES ? other.rating : null,
+      games, ratingReady: games >= RATING_PLACEMENT_GAMES, requestId: link.id };
     if (link.status === 'accepted') friends.push(item);
     else if (link.status === 'pending' && link.addressee_id === acct.id) incoming.push(item);
     else if (link.status === 'pending' && link.requester_id === acct.id) outgoing.push(item);
@@ -302,8 +308,68 @@ const queues = new Map();  // "base+inc" -> waiting seeker { sid, pid }
 const games = new Map();   // gameId -> game
 const connectedSockets = new Map();
 const tournaments = new Map();
+const stockfish = new StockfishAnalyzer();
+let stockfishUnavailableLogged = false;
 const tournamentRoom = (id) => `tournament:${id}`;
 const notifyTournament = (id) => io.to(tournamentRoom(id)).emit('tournamentUpdate', { tournamentId: id });
+
+async function saveTournamentCheckpoint(game) {
+  if (!db || !game.tournamentMatch) return;
+  const state = serializeTournamentGame(game);
+  const { error } = await db.from('tournament_matches').update({ game_state: state }).eq('id', game.tournamentMatch.matchId);
+  if (error) throw new Error('Could not save tournament checkpoint: ' + error.message);
+}
+
+function queueTournamentCheckpoint(game) {
+  if (!db || !game.tournamentMatch) return Promise.resolve();
+  const next = (game.checkpointChain || Promise.resolve()).then(() => saveTournamentCheckpoint(game));
+  game.checkpointChain = next.catch((error) => console.error(error.message));
+  return game.checkpointChain;
+}
+
+const tournamentCheckpointTimer = setInterval(() => {
+  for (const game of games.values()) if (!game.over && game.tournamentMatch) queueTournamentCheckpoint(game);
+}, 5000);
+tournamentCheckpointTimer.unref?.();
+
+async function reviewFinishedGame(game, moves) {
+  if (!db || !moves.length) return;
+  try {
+    const review = await reviewGameMoves(moves, stockfish, {
+      minPly: Number(process.env.STOCKFISH_MIN_PLY) || 10,
+      maxPlies: Number(process.env.STOCKFISH_MAX_PLIES) || 60,
+      minSamples: Number(process.env.STOCKFISH_MIN_SAMPLES) || 12,
+      concordanceThreshold: Number(process.env.STOCKFISH_CONCORDANCE) || 0.90,
+      avgLossThreshold: Number(process.env.STOCKFISH_AVG_CPL) || 18
+    });
+    const inserts = [];
+    for (const color of ['w', 'b']) {
+      const player = color === 'w' ? game.white : game.black;
+      const metrics = review.players[color];
+      if (!player.pid || player.pid.startsWith('g:') || !metrics.flagForReview) continue;
+      inserts.push({
+        game_id: game.id, player_id: player.pid, signal: 'stockfish_concordance',
+        details: {
+          engine: review.engine, depth: review.depth, analyzed_moves: metrics.analyzedMoves,
+          best_move_rate: Math.round(metrics.bestMoveRate * 1000) / 1000,
+          average_centipawn_loss: metrics.averageCentipawnLoss,
+          samples: metrics.samples.slice(0, 40),
+          note: 'Automated engine agreement is a review signal, not proof of cheating.'
+        }
+      });
+    }
+    if (inserts.length) {
+      const { error } = await db.from('integrity_flags').insert(inserts);
+      if (error) throw new Error(error.message);
+    }
+  } catch (error) {
+    if (!stockfishUnavailableLogged) {
+      console.warn('Stockfish post-game review unavailable:', error.message,
+        '\nSet STOCKFISH_PATH to a local Stockfish executable to enable engine review.');
+      stockfishUnavailableLogged = true;
+    }
+  }
+}
 function joinPlayerTournaments(socket, playerId) {
   if (!db) return;
   db.from('tournament_players').select('tournament_id').eq('player_id', playerId)
@@ -314,66 +380,157 @@ function joinPlayerTournaments(socket, playerId) {
 }
 
 async function persist(g, w, b, result, reason, pgn) {
-  if (!db) return;
-  try {
-    for (const [p, u] of [[g.white, w], [g.black, b]]) {
-      if (!u.authed) continue;
-      u.games = (u.games || 0) + 1;
-      await db.from('profiles').update({
-        rating: u.rating, rating_deviation: u.rd, volatility: u.volatility, games_played: u.games
-      }).eq('id', p.pid);
+  if (!db) return true;
+  const { data, error } = await db.rpc('finalize_chess_game', {
+    p_game_id: g.id,
+    p_white_id: w.authed ? g.white.pid : null,
+    p_black_id: b.authed ? g.black.pid : null,
+    p_white_name: w.name,
+    p_black_name: b.name,
+    p_result: result,
+    p_reason: reason,
+    p_pgn: pgn,
+    p_base: g.base,
+    p_inc: g.inc,
+    p_white_rating: Math.round(w.rating),
+    p_white_deviation: w.rd,
+    p_white_volatility: w.volatility,
+    p_white_games: w.games || 0,
+    p_black_rating: Math.round(b.rating),
+    p_black_deviation: b.rd,
+    p_black_volatility: b.volatility,
+    p_black_games: b.games || 0
+  });
+  if (error) throw new Error('Could not atomically save game result: ' + error.message);
+  if (data === false) {
+    // The game row already exists: this is a recovery retry after the result
+    // committed but before the tournament bracket was advanced. Reload the
+    // profiles written by the first commit rather than applying Glicko twice.
+    const ids = [g.white, g.black].filter((player) => player.pid && !player.pid.startsWith('g:')).map((player) => player.pid);
+    if (ids.length) {
+      const { data: profiles, error: profileError } = await db.from('profiles')
+        .select('id,username,rating,rating_deviation,volatility,games_played').in('id', ids);
+      if (profileError) throw new Error('Could not reload committed ratings: ' + profileError.message);
+      for (const profile of profiles || []) {
+        const user = users.get(profile.id);
+        if (user) Object.assign(user, {
+          name: profile.username, rating: profile.rating,
+          rd: profile.rating_deviation ?? 350, volatility: profile.volatility ?? 0.06,
+          games: profile.games_played || 0
+        });
+      }
     }
-    await db.from('games').insert({
-      id: g.id, white: w.authed ? g.white.pid : null, black: b.authed ? g.black.pid : null,
-      white_name: w.name, black_name: b.name, result, reason, pgn, base: g.base, inc: g.inc
-    });
-  } catch (e) { console.error('persist failed', e.message); }
+    return 'duplicate';
+  }
+  return true;
 }
 
-function endGame(g, result, reason) {
-  if (g.over) return;
+async function endGame(g, result, reason) {
+  if (g.over) return true;
   g.over = true;
   clearTimeout(g.timer);
+
+  // Persist a terminal intent with the final board before finalizing the result.
+  // This lets bootstrap finish a resignation/timeout as well as a checkmate.
+  if (db && g.tournamentMatch) {
+    g.pendingResult = { result, reason };
+    try {
+      await g.checkpointChain;
+      await saveTournamentCheckpoint(g);
+    } catch (error) {
+      console.error('Could not save terminal tournament checkpoint; the atomic game result will be the recovery source:', error.message);
+    }
+  }
+
   const w = users.get(g.white.pid), b = users.get(g.black.pid);
+  if (!w || !b) return false;
+  const oldW = { rating: w.rating, rd: w.rd ?? 350, volatility: w.volatility ?? 0.06, games: w.games || 0 };
+  const oldB = { rating: b.rating, rd: b.rd ?? 350, volatility: b.volatility ?? 0.06, games: b.games || 0 };
   const sw = result === '1-0' ? 1 : result === '0-1' ? 0 : 0.5;
-  const oldW = { rating: w.rating, rd: w.rd ?? 350, volatility: w.volatility ?? 0.06 };
-  const oldB = { rating: b.rating, rd: b.rd ?? 350, volatility: b.volatility ?? 0.06 };
-  const nextW = updateGlicko2(oldW, [{ ...oldB, score: sw }]);
-  const nextB = updateGlicko2(oldB, [{ ...oldW, score: 1 - sw }]);
-  Object.assign(w, nextW);
-  Object.assign(b, nextB);
-  const dw = w.rating - oldW.rating;
-  persist(g, w, b, result, reason, g.chess.pgn());
+  Object.assign(w, updateGlicko2(oldW, [{ ...oldB, score: sw }]));
+  Object.assign(b, updateGlicko2(oldB, [{ ...oldW, score: 1 - sw }]));
+  if (w.authed) w.games = oldW.games + 1;
+  if (b.authed) b.games = oldB.games + 1;
+
+  const pgn = g.chess.pgn();
+  let committed = true, newlyCommitted = true;
+  try {
+    const saveResult = await persist(g, w, b, result, reason, pgn);
+    newlyCommitted = saveResult !== 'duplicate';
+  } catch (error) {
+    committed = false;
+    newlyCommitted = false;
+    console.error('game result persistence failed:', error.message);
+    if (db) {
+      const ids = [g.white, g.black].filter((player) => player.pid && !player.pid.startsWith('g:')).map((player) => player.pid);
+      if (ids.length) {
+        const { data: profiles } = await db.from('profiles').select('id,username,rating,rating_deviation,volatility,games_played').in('id', ids);
+        for (const profile of profiles || []) {
+          const user = users.get(profile.id);
+          if (user) Object.assign(user, { name: profile.username, rating: profile.rating,
+            rd: profile.rating_deviation ?? 350, volatility: profile.volatility ?? 0.06, games: profile.games_played || 0 });
+        }
+      }
+    }
+    if (g.tournamentMatch) {
+      const tournamentId = g.tournamentMatch.tournamentId;
+      const state = tournaments.get(tournamentId);
+      if (state) state.status = 'paused';
+      await db.from('tournaments').update({ status: 'paused' }).eq('id', tournamentId);
+      // Keep the terminal game in memory and its pendingResult in the checkpoint;
+      // a server restart can retry the idempotent commit safely.
+    }
+  }
+
+  const wPublic = publicPlayer(w), bPublic = publicPlayer(b);
+  const dw = committed && newlyCommitted && wPublic.ratingReady && oldW.games >= RATING_PLACEMENT_GAMES ? Math.round(w.rating - oldW.rating) : null;
+  const dbRating = committed && newlyCommitted && bPublic.ratingReady && oldB.games >= RATING_PLACEMENT_GAMES ? Math.round(b.rating - oldB.rating) : null;
+  const engineMoves = g.chess.history({ verbose: true }).map((move) => ({
+    from: move.from, to: move.to, ...(move.promotion ? { promotion: move.promotion } : {})
+  }));
+  if (committed && newlyCommitted) reviewFinishedGame(g, engineMoves);
   io.to(g.id).emit('over', {
-    result, reason,
-    ratings: { w: w.rating, b: b.rating, dw, wRd: w.rd, bRd: b.rd }
+    result, reason, saved: committed, tournamentPaused: !committed && !!g.tournamentMatch,
+    ratings: {
+      w: wPublic.rating, b: bPublic.rating, dw, db: dbRating,
+      wGames: w.games || 0, bGames: b.games || 0,
+      wReady: wPublic.ratingReady, bReady: bPublic.ratingReady
+    }
   });
-  advanceTournament(g, result).catch((e) => console.error('tournament progression failed:', e.message));
+
+  if (!committed && g.tournamentMatch) return false;
+  try { await advanceTournament(g, result); }
+  catch (error) { console.error('tournament progression failed:', error.message); }
   games.delete(g.id);
+  return committed;
 }
 
 function scheduleTimeout(g) {
   clearTimeout(g.timer);
+  if (g.recoveryPaused || !g.started) return;
   const side = g.chess.turn();
   g.timer = setTimeout(() => {
     endGame(g, side === 'w' ? '0-1' : '1-0', 'timeout');
-  }, g.clock[side] + 50);
+  }, Math.max(0, g.clock[side]) + 50);
 }
 
-const info = (p) => ({ name: users.get(p.pid).name, rating: users.get(p.pid).rating, rd: users.get(p.pid).rd });
+const info = (p) => {
+  const user = users.get(p.pid) || { name: 'Player', authed: true, games: 0, rating: 1200, rd: 350 };
+  return { name: user.name, ...publicPlayer(user), authed: !!user.authed };
+};
 
 // Everything a client needs to draw a game from scratch (used for new games and reconnects).
 function snapshot(g, color) {
   const hist = g.chess.history({ verbose: true });
   const last = hist[hist.length - 1];
   return {
-    gameId: g.id, color, fen: g.chess.fen(), clock: g.clock, elapsed: Date.now() - g.turnStart,
-    turn: g.chess.turn(), started: g.started, inc: g.inc, base: g.base,
+    gameId: g.id, color, fen: g.chess.fen(), clock: g.clock, elapsed: g.started && !g.recoveryPaused ? Date.now() - g.turnStart : 0,
+    turn: g.chess.turn(), started: g.started, recovering: !!g.recoveryPaused, inc: g.inc, base: g.base,
     moves: hist.map((m) => m.san), last: last ? [last.from, last.to] : null,
     white: info(g.white), black: info(g.black),
     draw: g.draw ? g.draw.by : null,
-    drawLockedUntil: g.drawLock[color], // ply number from which this player may offer again
-    chat: g.chat.slice(-50)
+    drawLockedUntil: g.drawLock[color],
+    chat: (g.chat || []).slice(-50)
   };
 }
 
@@ -391,6 +548,19 @@ function clearDraw(g, reason) {
 }
 const activeGameFor = (pid) => [...games.values()].find((g) => !g.over && (g.white.pid === pid || g.black.pid === pid));
 
+function maybeResumeRecoveredGame(g) {
+  if (!g.recoveryPaused) return;
+  const whiteOnline = g.white.sid && io.sockets.sockets.has(g.white.sid);
+  const blackOnline = g.black.sid && io.sockets.sockets.has(g.black.sid);
+  if (!whiteOnline || !blackOnline) return;
+  g.recoveryPaused = false;
+  g.started = true;
+  g.turnStart = Date.now();
+  scheduleTimeout(g);
+  io.to(g.id).emit('gameResumed', { clock: g.clock, turn: g.chess.turn() });
+  queueTournamentCheckpoint(g);
+}
+
 function resume(socket, g, pid) {
   const isWhite = g.white.pid === pid;
   (isWhite ? g.white : g.black).sid = socket.id;
@@ -400,9 +570,10 @@ function resume(socket, g, pid) {
   socket.join(g.id);
   socket.emit('start', snapshot(g, isWhite ? 'w' : 'b'));
   io.to(g.id).emit('opp', { online: true });
+  maybeResumeRecoveredGame(g);
 }
 
-function startGame(a, b, base, inc, tournamentMatch = null) {
+function startGame(a, b, base, inc, tournamentMatch = null, options = {}) {
   for (const player of [a, b]) {
     if (!player?.sid || !io.sockets.sockets.has(player.sid)) {
       throw new Error('Both players must be connected before a game can start.');
@@ -415,7 +586,7 @@ function startGame(a, b, base, inc, tournamentMatch = null) {
     white, black, inc, base,
     clock: { w: base * 1000, b: base * 1000 },
     turnStart: Date.now(),
-    started: true, over: false,
+    started: !options.deferStart, over: false, recoveryPaused: false, checkpointChain: Promise.resolve(),
     draw: null,                       // { by: 'w' | 'b' } while an offer is pending
     drawLock: { w: DRAW_MIN_PLY, b: DRAW_MIN_PLY }, // earliest ply at which each side may offer
     drawCount: { w: 0, b: 0 },
@@ -425,9 +596,17 @@ function startGame(a, b, base, inc, tournamentMatch = null) {
   };
   games.set(g.id, g);
   for (const p of [white, black]) io.sockets.sockets.get(p.sid)?.join(g.id);
-  for (const [p, color] of [[white, 'w'], [black, 'b']]) io.to(p.sid).emit('start', snapshot(g, color));
-  scheduleTimeout(g);
+  if (!options.deferStart) announceStartedGame(g);
   return g.id;
+}
+
+function announceStartedGame(g) {
+  g.started = true;
+  g.turnStart = Date.now();
+  for (const [player, color] of [[g.white, 'w'], [g.black, 'b']]) {
+    if (player.sid) io.to(player.sid).emit('start', snapshot(g, color));
+  }
+  scheduleTimeout(g);
 }
 
 /* ---------- single-elimination tournaments ---------- */
@@ -543,34 +722,66 @@ async function startTournamentRound(state, entrants) {
   state.matches = [];
   const players = shuffle(entrants);
   state.byes = players.length % 2 ? [players.pop()] : [];
+  const rowsToInsert = [];
   if (state.byes.length) {
     const byePlayer = state.byes[0];
-    const { error } = await db.from('tournament_matches').insert({
+    rowsToInsert.push({
       id: crypto.randomUUID(), tournament_id: state.id, round: state.round,
       player_a: byePlayer, player_b: null, winner_id: byePlayer, status: 'done', result: 'bye'
     });
-    if (error) throw new Error('Could not save the tournament bye.');
   }
   for (let i = 0; i < players.length; i += 2) {
-    const a = players[i], b = players[i + 1];
-    const match = { id: crypto.randomUUID(), a, b, winner: null, status: 'playing', gameId: null };
+    const match = { id: crypto.randomUUID(), a: players[i], b: players[i + 1], winner: null, status: 'pending', gameId: null, result: null };
     state.matches.push(match);
-    const { error } = await db.from('tournament_matches').insert({
+    rowsToInsert.push({
       id: match.id, tournament_id: state.id, round: state.round,
-      player_a: a, player_b: b, status: 'playing'
+      player_a: match.a, player_b: match.b, status: 'pending'
     });
-    if (error) throw new Error('Could not save tournament pairing.');
-    const sidA = connectedSockets.get(a), sidB = connectedSockets.get(b);
-    if (!sidA || !sidB || !io.sockets.sockets.has(sidA) || !io.sockets.sockets.has(sidB)) {
-      throw new Error('Both tournament players must remain connected to start their pairing.');
-    }
-    const game = startGame({ sid: sidA, pid: a }, { sid: sidB, pid: b }, state.base, state.inc, {
-      tournamentId: state.id, matchId: match.id, round: state.round
-    });
-    match.gameId = game;
-    await db.from('tournament_matches').update({ game_id: game }).eq('id', match.id);
   }
+  // Insert every pairing in one database statement. A restart can therefore
+  // either see the previous completed round or the complete new round, never a half bracket.
+  const { error } = await db.from('tournament_matches').insert(rowsToInsert);
+  if (error) throw new Error('Could not persist the complete tournament round: ' + error.message);
+  await resumePendingTournamentPairs(state);
   notifyTournament(state.id);
+}
+
+async function resumePendingTournamentPairs(state) {
+  if (!db || !state || state.status !== 'running') return;
+  state.pairingStarting ||= new Set();
+  const pending = state.matches.filter((match) => match.status === 'pending'
+    || (match.status === 'done' && match.result === '1/2-1/2' && !match.winner));
+  for (const match of pending) {
+    if (state.pairingStarting.has(match.id)) continue;
+    const sidA = connectedSockets.get(match.a), sidB = connectedSockets.get(match.b);
+    if (!sidA || !sidB || !io.sockets.sockets.has(sidA) || !io.sockets.sockets.has(sidB)) continue;
+    state.pairingStarting.add(match.id);
+    let gameId = null;
+    try {
+      gameId = startGame({ sid: sidA, pid: match.a }, { sid: sidB, pid: match.b }, state.base, state.inc, {
+        tournamentId: state.id, matchId: match.id, round: state.round
+      }, { deferStart: true });
+      const game = games.get(gameId);
+      const { error } = await db.from('tournament_matches').update({
+        status: 'playing', game_id: gameId, winner_id: null, result: null,
+        game_state: serializeTournamentGame(game)
+      }).eq('id', match.id);
+      if (error) throw error;
+      match.status = 'playing'; match.winner = null; match.result = null; match.gameId = gameId;
+      announceStartedGame(game);
+      notifyTournament(state.id);
+    } catch (error) {
+      if (gameId) {
+        const game = games.get(gameId);
+        if (game) { clearTimeout(game.timer); game.over = true; games.delete(gameId); }
+      }
+      state.status = 'paused';
+      await db.from('tournaments').update({ status: 'paused' }).eq('id', state.id);
+      console.error('Could not start tournament pairing:', match.id, error.message);
+    } finally {
+      state.pairingStarting.delete(match.id);
+    }
+  }
 }
 
 async function advanceTournament(g, result) {
@@ -582,31 +793,29 @@ async function advanceTournament(g, result) {
   const match = state.matches.find((m) => m.id === ref.matchId);
   if (!match || match.status === 'done') return;
 
-  // Drawn tournament matches replay immediately; nobody advances on a draw.
+  // Drawn matches remain as round blockers until the same players reconnect for a replay.
   if (!winner) {
-    await db.from('tournament_matches').update({ status: 'done', winner_id: null, result }).eq('id', match.id);
-    const sidA = connectedSockets.get(match.a), sidB = connectedSockets.get(match.b);
-    if (sidA && sidB && io.sockets.sockets.has(sidA) && io.sockets.sockets.has(sidB)) {
-      match.status = 'playing';
-      const newGame = startGame({ sid: sidA, pid: match.a }, { sid: sidB, pid: match.b }, state.base, state.inc, ref);
-      match.gameId = newGame;
-      await db.from('tournament_matches').update({ status: 'playing', game_id: newGame, winner_id: null, result: null }).eq('id', match.id);
-      notifyTournament(state.id);
-      return;
-    }
-    state.status = 'paused';
-    await db.from('tournaments').update({ status: 'paused' }).eq('id', state.id);
+    match.status = 'done'; match.winner = null; match.result = result;
+    const { error } = await db.from('tournament_matches').update({ status: 'done', winner_id: null, result }).eq('id', match.id);
+    if (error) throw new Error('Could not save drawn tournament result: ' + error.message);
+    await resumePendingTournamentPairs(state);
     notifyTournament(state.id);
     return;
   }
 
-  match.status = 'done'; match.winner = winner;
+  match.status = 'done'; match.winner = winner; match.result = result;
   // Claim round advancement before awaiting the database. Multiple matches can end
   // almost simultaneously; only the final result handler may create the next round.
   const roundComplete = state.matches.every((m) => m.status === 'done');
-  const ownsAdvancement = roundComplete && !state.advancingRound;
+  const waitingForDrawRematch = state.matches.some((m) => m.status === 'done' && m.result === '1/2-1/2' && !m.winner);
+  const ownsAdvancement = roundComplete && !waitingForDrawRematch && !state.advancingRound;
   if (ownsAdvancement) state.advancingRound = true;
-  await db.from('tournament_matches').update({ status: 'done', winner_id: winner, result }).eq('id', match.id);
+  const { error: resultError } = await db.from('tournament_matches').update({ status: 'done', winner_id: winner, result }).eq('id', match.id);
+  if (resultError) {
+    state.status = 'paused';
+    await db.from('tournaments').update({ status: 'paused' }).eq('id', state.id);
+    throw new Error('Could not save tournament match result: ' + resultError.message);
+  }
   notifyTournament(state.id);
   if (!ownsAdvancement) return;
 
@@ -656,7 +865,147 @@ app.post('/api/tournaments/start', async (req, res) => {
   res.json({ ok: true, message: 'Tournament started. First-round games are being paired.' });
 });
 
+
+async function loadRecoveredUser(playerId, profilesById) {
+  if (users.get(playerId)?.authed) return;
+  const profile = profilesById.get(playerId);
+  if (!profile) throw new Error(`Missing account profile for tournament player ${playerId}.`);
+  const { data: actions } = await db.from('moderation_actions').select('action,expires_at')
+    .eq('target_id', playerId).eq('active', true);
+  const active = (actions || []).filter((action) => !action.expires_at || new Date(action.expires_at).getTime() > Date.now());
+  users.set(playerId, {
+    name: profile.username, rating: profile.rating, rd: profile.rating_deviation ?? 350,
+    volatility: profile.volatility ?? 0.06, games: profile.games_played || 0,
+    since: profile.created_at, banned: active.some((action) => action.action === 'ban'),
+    muted: active.some((action) => action.action === 'mute'),
+    muteUntil: active.find((action) => action.action === 'mute')?.expires_at
+      ? new Date(active.find((action) => action.action === 'mute').expires_at).getTime() : null,
+    authed: true
+  });
+}
+
+async function restoreActiveTournaments() {
+  if (!db) return;
+  const { data: activeTournaments, error } = await db.from('tournaments').select('*').in('status', ['running', 'paused']);
+  if (error) throw new Error('Could not load active tournaments: ' + error.message);
+  for (const tournament of activeTournaments || []) {
+    const [{ data: entrantRows, error: entrantError }, { data: matchRows, error: matchError }] = await Promise.all([
+      db.from('tournament_players').select('player_id').eq('tournament_id', tournament.id),
+      db.from('tournament_matches').select('*').eq('tournament_id', tournament.id).order('round', { ascending: true })
+    ]);
+    if (entrantError || matchError) {
+      console.error('Tournament recovery lookup failed:', tournament.id, entrantError?.message || matchError?.message);
+      continue;
+    }
+    const playerIds = [...new Set([...(entrantRows || []).map((row) => row.player_id), ...(matchRows || []).flatMap((row) => [row.player_a, row.player_b, row.winner_id]).filter(Boolean)])];
+    const { data: profiles, error: profileError } = playerIds.length
+      ? await db.from('profiles').select('*').in('id', playerIds)
+      : { data: [], error: null };
+    if (profileError) { console.error('Tournament profile restore failed:', profileError.message); continue; }
+    const profilesById = new Map((profiles || []).map((profile) => [profile.id, profile]));
+    const state = hydrateTournamentState(tournament, (entrantRows || []).map((row) => row.player_id), matchRows || []);
+    const activeGameIds = state.matches.filter((match) => match.status === 'playing' && match.gameId).map((match) => match.gameId);
+    const { data: committedGames, error: committedGamesError } = activeGameIds.length
+      ? await db.from('games').select('id,result,reason').in('id', activeGameIds)
+      : { data: [], error: null };
+    if (committedGamesError) {
+      console.error('Tournament result recovery lookup failed:', committedGamesError.message);
+      continue;
+    }
+    const committedByGameId = new Map((committedGames || []).map((row) => [row.id, row]));
+    const pendingDrawReplay = state.matches.some((match) => match.status === 'done' && match.result === '1/2-1/2' && !match.winner);
+    const pendingPairing = state.matches.some((match) => match.status === 'pending');
+    if (state.status === 'paused' && (pendingPairing || pendingDrawReplay || state.matches.some((match) => match.status === 'playing'
+        && (matchRows || []).some((row) => row.id === match.id && row.game_state)))) {
+      state.status = 'running';
+      await db.from('tournaments').update({ status: 'running' }).eq('id', tournament.id);
+    }
+    tournaments.set(tournament.id, state);
+    let recoveryFailed = false;
+    for (const match of state.matches.filter((item) => item.status === 'playing')) {
+      const row = (matchRows || []).find((item) => item.id === match.id);
+      try {
+        const saved = row?.game_state;
+        if (!saved || !row.game_id) throw new Error('No saved position is available for this active pairing.');
+        await loadRecoveredUser(saved.whitePid, profilesById);
+        await loadRecoveredUser(saved.blackPid, profilesById);
+        const chess = restoreChess(saved);
+        const white = { pid: saved.whitePid, sid: null };
+        const black = { pid: saved.blackPid, sid: null };
+        const game = {
+          id: row.game_id, chess, white, black, base: saved.base || tournament.base,
+          inc: saved.inc ?? tournament.inc, clock: { w: Number(saved.clock.w), b: Number(saved.clock.b) },
+          turnStart: Date.now(), started: false, recoveryPaused: true, over: false,
+          draw: saved.draw || null, drawLock: saved.drawLock || { w: DRAW_MIN_PLY, b: DRAW_MIN_PLY },
+          drawCount: saved.drawCount || { w: 0, b: 0 }, chat: [],
+          timing: saved.timing || { w: { total: 0, veryFast: 0 }, b: { total: 0, veryFast: 0 } },
+          pendingResult: saved.pendingResult || null,
+          tournamentMatch: { tournamentId: tournament.id, matchId: match.id, round: state.round },
+          checkpointChain: Promise.resolve()
+        };
+        games.set(game.id, game);
+        match.gameId = game.id;
+        const committedResult = committedByGameId.get(row.game_id);
+        const pendingResult = saved.pendingResult || (committedResult ? { result: committedResult.result, reason: committedResult.reason } : null);
+        if (pendingResult) {
+          const finalized = await endGame(game, pendingResult.result, pendingResult.reason);
+          if (!finalized) recoveryFailed = true;
+        } else if (chess.isCheckmate()) {
+          const finalized = await endGame(game, chess.turn() === 'w' ? '0-1' : '1-0', 'checkmate');
+          if (!finalized) recoveryFailed = true;
+        } else if (chess.isDraw()) {
+          const finalized = await endGame(game, '1/2-1/2', chess.isStalemate() ? 'stalemate' : chess.isThreefoldRepetition() ? 'repetition' : 'draw');
+          if (!finalized) recoveryFailed = true;
+        }
+      } catch (error) {
+        recoveryFailed = true;
+        console.error('Could not restore tournament match:', match.id, error.message);
+      }
+    }
+    for (const playerId of state.players) {
+      const sid = connectedSockets.get(playerId);
+      if (sid) io.sockets.sockets.get(sid)?.join(tournamentRoom(tournament.id));
+    }
+    if (recoveryFailed) {
+      state.status = 'paused';
+      await db.from('tournaments').update({ status: 'paused' }).eq('id', tournament.id);
+    } else if (state.round === 0 && state.players.length >= 2 && ['running', 'paused'].includes(state.status)) {
+      // A process may stop after marking a new tournament running but before its
+      // first round rows are inserted. Recreate the round from the entrant list.
+      state.status = 'running';
+      await db.from('tournaments').update({ status: 'running' }).eq('id', tournament.id);
+      try { await startTournamentRound(state, state.players); }
+      catch (error) {
+        state.status = 'paused';
+        await db.from('tournaments').update({ status: 'paused' }).eq('id', tournament.id);
+        console.error('Could not initialize recovered first round:', error.message);
+      }
+    } else if (state.status === 'paused' && state.matches.some((match) => match.status === 'playing')) {
+      state.status = 'running';
+      await db.from('tournaments').update({ status: 'running' }).eq('id', tournament.id);
+    }
+
+    // A crash can occur after the final match result was committed but before the next
+    // round was created. Complete that transition exactly once during bootstrap.
+    if (!recoveryFailed && state.status === 'running' && state.round > 0
+        && state.matches.length && state.matches.every((match) => match.status === 'done')
+        && !state.matches.some((match) => match.result === '1/2-1/2' && !match.winner)) {
+      const winners = [...state.byes, ...state.matches.map((match) => match.winner).filter(Boolean)];
+      state.advancingRound = true;
+      try { await startTournamentRound(state, winners); }
+      catch (error) {
+        state.status = 'paused';
+        await db.from('tournaments').update({ status: 'paused' }).eq('id', tournament.id);
+        console.error('Could not advance recovered tournament:', error.message);
+      } finally { state.advancingRound = false; }
+    }
+    await resumePendingTournamentPairs(state);
+    notifyTournament(tournament.id);
+  }
+}
+
 io.on('connection', (socket) => {
+
   let pid = null;
 
   socket.on('hello', async ({ id, name, token }) => {
@@ -676,11 +1025,16 @@ io.on('connection', (socket) => {
       }
       connectedSockets.set(pid, socket.id);
       users.get(pid).sid = socket.id;
-      if (users.get(pid).authed) joinPlayerTournaments(socket, pid);
+      if (users.get(pid).authed) {
+        joinPlayerTournaments(socket, pid);
+        for (const state of tournaments.values()) {
+          if (state.players.includes(pid)) await resumePendingTournamentPairs(state);
+        }
+      }
       const current = users.get(pid);
       socket.emit('me', {
-        id: pid, name: current.name, rating: current.rating, rd: current.rd,
-        games: current.games, since: current.since, authed: !!current.authed, isAdmin: isAdmin(pid)
+        id: pid, name: current.name, ...publicPlayer(current),
+        since: current.since, authed: !!current.authed, isAdmin: isAdmin(pid)
       });
       const live = activeGameFor(pid);
       if (live) resume(socket, live, pid);
@@ -716,10 +1070,11 @@ io.on('connection', (socket) => {
   });
 
   // `ack` is optional: clients use it to learn whether the move was accepted.
-  socket.on('move', ({ gameId, from, to, promotion } = {}, ack) => {
+  socket.on('move', async ({ gameId, from, to, promotion } = {}, ack) => {
     const reply = typeof ack === 'function' ? ack : () => {};
     const g = games.get(gameId);
     if (!g || g.over) return reply({ ok: false });
+    if (g.recoveryPaused) return reply({ ok: false, error: 'Waiting for both tournament players to reconnect.' });
     if (!allowRate(`move:${pid || socket.id}`, 40, 10_000)) return reply({ ok: false, error: 'rate limited' });
     const side = g.chess.turn();
     const player = side === 'w' ? g.white : g.black;
@@ -753,6 +1108,7 @@ io.on('connection', (socket) => {
         }).then(({ error }) => { if (error) console.error('integrity flag failed:', error.message); });
       }
     }
+    await queueTournamentCheckpoint(g);
     reply({ ok: true });
 
     // A draw offer lapses when the player it was made to moves instead of answering.
@@ -857,7 +1213,7 @@ io.on('connection', (socket) => {
     if (pid && connectedSockets.get(pid) === socket.id) connectedSockets.delete(pid);
     for (const g of games.values()) {
       if (g.over) continue;
-      if (g.white.sid === socket.id || g.black.sid === socket.id) {
+      if (!g.recoveryPaused && (g.white.sid === socket.id || g.black.sid === socket.id)) {
         // Give them 30s to come back before forfeiting.
         const white = g.white.sid === socket.id;
         io.to(g.id).emit('opp', { online: false, seconds: 30 });
@@ -871,4 +1227,30 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Chess server on http://localhost:${PORT}`));
+
+async function boot() {
+  try { await restoreActiveTournaments(); }
+  catch (error) { console.error('Tournament recovery initialization failed:', error.message); }
+  server.listen(PORT, () => console.log(`Chess server on http://localhost:${PORT}`));
+}
+
+let shuttingDown = false;
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`Received ${signal}; saving active tournament games...`);
+  clearInterval(tournamentCheckpointTimer);
+  for (const game of games.values()) clearTimeout(game.timer);
+  await Promise.all([...games.values()].filter((game) => game.tournamentMatch).map(async (game) => {
+    try {
+      await game.checkpointChain;
+      await saveTournamentCheckpoint(game);
+    } catch (error) { console.error('Final tournament checkpoint failed:', error.message); }
+  }));
+  await stockfish.terminate();
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 8000).unref();
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+boot();

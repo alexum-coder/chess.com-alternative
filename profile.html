@@ -45,7 +45,7 @@
 <main id="app" class="hidden">
   <section class="panel hero">
     <div><h1 id="uname"></h1><p class="sub" id="since"></p></div>
-    <div class="rating"><b id="rating">1200</b><span>Glicko-2 rating</span><small id="rd">Rating deviation: 350</small></div>
+    <div class="rating"><b id="rating">1200</b><span id="ratingLabel">Glicko-2 rating</span><small id="rd">Rating deviation: 350</small></div>
   </section>
 
   <section class="stats" aria-label="Record">
@@ -99,8 +99,10 @@
 
   const showMe = () => {
     $('#uname').textContent = me.name;
-    $('#rating').textContent = me.rating;
-    $('#rd').textContent = `Rating deviation: ${Math.round(me.rd ?? 350)}`;
+    $('#rating').textContent = me.ratingReady ? me.rating : `Provisional ${me.games || 0}/5`;
+    $('#ratingLabel').textContent = me.ratingReady ? 'Glicko-2 rating' : 'Rating placement';
+    $('#rd').textContent = me.ratingReady ? `Rating deviation: ${Math.round(me.rd ?? 350)}`
+      : `Complete ${Math.max(0, 5 - (me.games || 0))} more match(es) to reveal your rating`;
     $('#since').textContent = me.since ? 'Member since ' + new Date(me.since).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : '';
     $('#newName').value = me.name;
   };

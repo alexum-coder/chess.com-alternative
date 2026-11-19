@@ -148,6 +148,50 @@
   .moderation-actions button { padding:5px 8px; font-size:.78rem; }
   .moderation-actions .danger { color:var(--loss); }
   @media (max-width:520px) { .social-item { flex-wrap:wrap; } .social-item .spacer { display:none; } }
+
+  /* Clean club-style interface: bright workspace, green primary actions and a stronger board focus. */
+  main { max-width: 1180px; padding: 22px 18px 52px; gap: 22px; grid-template-columns: minmax(0, 680px) minmax(300px, 1fr); }
+  .player { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 2px 8px rgba(35,49,39,.05); }
+  .player.turn { border-color: #81b64c; box-shadow: 0 0 0 1px rgba(129,182,76,.2); }
+  .av { background: #edf3e9; color: #42652d; }
+  .clock { background: #303b32; color: #fff; border-radius: 7px; }
+  .clock.active { background: #81b64c; color: #172014; }
+  .clock.low { color: #ffd1cc; } .clock.active.low { background: #c64c45; color: #fff; }
+  #board { border-radius: 8px; box-shadow: 0 12px 28px rgba(34,48,37,.17); }
+  .veil { background: rgba(31,42,33,.63); backdrop-filter: blur(3px); }
+  .veil-card { background: #fff; color: #262522; border: 1px solid #e3e8e2; border-radius: 12px; box-shadow: 0 18px 48px rgba(0,0,0,.23); }
+  .veil-card p { color: #68736a; }
+  .promo { z-index: 60; }
+  .veil { z-index: 70; }
+  .promo-btn:nth-child(even) { background: #d9e4d0; }
+  .panel { border: 1px solid #e3e8e3; border-radius: 11px; box-shadow: 0 2px 9px rgba(35,49,39,.045); }
+  .panel h2 { font-size: 1.04rem; letter-spacing: -.015em; }
+  .panel h3 { color: #4d5a4e; }
+  input, .tournament-form select { background: #fbfcfb; border-color: #d9e0d9; color: var(--ink); }
+  button { background: #f4f7f3; border-color: #dce4db; color: #29352a; transition: background .12s, border-color .12s, transform .12s; }
+  button:hover { background: #edf4e9; border-color: #a8c88f; }
+  button.primary { background: #81b64c; border-color: #81b64c; color: #172014; }
+  button.primary:hover { background: #72a63d; border-color: #72a63d; }
+  .modes button { background: #f7f9f6; border-color: #e1e7e0; }
+  .modes button b { color: #2c382d; }
+  .modes button:hover { background: #edf5e8; border-color: #9fc783; }
+  #moves .m.cur { background: #eaf3e4; color: #456c2f; }
+  .social-item { background: #fafcfa; border-color: #e4e9e3; }
+  .chat-log { background: #fbfcfb; border-color: #e2e8e1; }
+  .tournament-meta, .hint, .foot { color: #737d73; }
+  .moderation-card { border-color: #e4e9e3; }
+  .moderation-actions .danger, .social-item button.danger { color: #b4443c; }
+  .social-item button.danger { background: #fff7f6; border-color: #f0d9d6; }
+  .prebar { background: #edf3ff; border-color: #c4d5ff; }
+  .drawbar { box-shadow: 0 5px 18px rgba(31,42,33,.12); }
+  .foot { line-height: 1.6; }
+  @media (max-width: 860px) { main { max-width: 720px; grid-template-columns: 1fr; } }
+  @media (max-width: 520px) {
+    main { padding: 14px 10px 36px; gap: 12px; }
+    .panel { padding: 14px; margin-bottom: 12px; }
+    .player { margin: 6px 0; padding: 7px 8px; }
+    .clock { font-size: 1.25rem; padding: 7px 9px; }
+  }
 </style>
 </head>
 <body>
@@ -251,7 +295,7 @@
 
     <div class="panel hidden" id="moderationPanel">
       <h2>Moderator review</h2>
-      <p class="hint">Reports and timing signals are review leads, not proof of cheating.</p>
+      <p class="hint">Stockfish and timing signals are review leads, not proof of cheating.</p>
       <h3>Player reports</h3>
       <div id="moderationReports"><p class="empty">No reports.</p></div>
       <h3>Game integrity signals</h3>
@@ -345,7 +389,7 @@ const idleChess = new Chess();
 //         drawBy: 'w'|'b'|null pending draw offer, drawLock: ply from which I may offer again }
 let game = null;
 let selected = null, targets = [], tick = null, promoOpen = false;
-let myName = null, myRating = null;
+let myName = null, myRating = null, myGames = 0;
 
 const sb = window.ZZ?.sb || null;
 let token = null, tokenBroken = false;
@@ -372,9 +416,11 @@ function renderSocialAccess() {
 /* ---------- connection and account ---------- */
 socket.on('connect', hello);
 socket.on('me', (m) => {
-  myName = m.name; myRating = m.rating;
+  myName = m.name; myRating = m.rating; myGames = m.games || 0;
   myId = m.id; myAuthed = !!m.authed; myAdmin = !!m.isAdmin;
-  $('#me').textContent = m.authed ? '' : 'Playing as a guest: your rating is not saved. Log in to keep it.';
+  $('#me').textContent = !m.authed ? 'Playing as a guest: games are not saved to a profile.'
+    : m.ratingReady ? 'Your Glicko-2 rating is established.'
+    : `Provisional placement: ${myGames}/5 completed matches. Your rating is revealed after match five.`;
   paintPlayers(); renderSocialAccess(); loadSocial();
 });
 socket.on('autherror', (e) => {
@@ -450,7 +496,8 @@ async function loadFriends() {
     const requests = $('#friendRequests'), friends = $('#friendList');
     requests.replaceChildren(); friends.replaceChildren();
     for (const person of data.incoming || []) {
-      const item = socialItem(person.username, `Rating ${person.rating} · wants to connect`);
+      const label = person.ratingReady ? `Rating ${person.rating}` : `Provisional · ${person.games || 0}/5` ;
+      const item = socialItem(person.username, `${label} · wants to connect`);
       addActionButton(item, 'Accept', { friendAction: 'accept', requestId: person.requestId });
       addActionButton(item, 'Decline', { friendAction: 'decline', requestId: person.requestId });
       requests.appendChild(item);
@@ -460,7 +507,8 @@ async function loadFriends() {
     }
     if (!requests.children.length) requests.innerHTML = '<p class="empty">No pending requests.</p>';
     for (const person of data.friends || []) {
-      const item = socialItem(person.username, `Rating ${person.rating}`);
+      const label = person.ratingReady ? `Rating ${person.rating}` : `Provisional · ${person.games || 0}/5`;
+      const item = socialItem(person.username, label);
       addActionButton(item, 'Remove', { friendAction: 'remove', userId: person.id }).classList.add('danger');
       friends.appendChild(item);
     }
@@ -684,7 +732,7 @@ socket.on('waiting', (key) => veil({ title: 'Finding an opponent', sub: `Time co
 /* ---------- game events (also used for reconnecting) ---------- */
 socket.on('start', (s) => {
   game = { id: s.gameId, color: s.color, chess: new Chess(s.fen), clock: s.clock, turn: s.turn || 'w', over: false,
-    stamp: Date.now() - (s.elapsed || 0), moves: s.moves || [], last: s.last || null, white: s.white, black: s.black,
+    recovering: !!s.recovering, stamp: Date.now() - (s.elapsed || 0), moves: s.moves || [], last: s.last || null, white: s.white, black: s.black,
     pre: null, sending: false, drawBy: s.draw || null, drawLock: s.drawLockedUntil || 0 };
   selected = null; targets = []; closePromo();
   veil(null);
@@ -693,6 +741,7 @@ socket.on('start', (s) => {
   $('#youAre').textContent = `You are playing ${s.color === 'w' ? 'White' : 'Black'}`;
   $('#oppStatus').textContent = ''; $('#drawNote').textContent = '';
   paintPlayers(); setStatus(); render();
+  if (game.recovering) $('#status').textContent = 'Tournament game restored · waiting for both players to reconnect';
   clearInterval(tick); tick = setInterval(drawClocks, 100);
   if (!game.moves.length) Sound.play('start'); // not on reconnects
 });
@@ -705,6 +754,13 @@ socket.on('state', (s) => {
   selected = null; targets = []; closePromo();
   Sound.play(Sound.forMove(s.san));
   runPremove();
+  setStatus(); render();
+});
+
+socket.on('gameResumed', (s) => {
+  if (!game) return;
+  game.recovering = false; game.clock = s.clock; game.turn = s.turn; game.stamp = Date.now();
+  $('#status').textContent = 'Tournament game resumed';
   setStatus(); render();
 });
 
@@ -746,14 +802,19 @@ socket.on('over', (o) => {
   if (o.reason !== 'checkmate') Sound.play('end'); // checkmate already played its own sound with the final move
   const white = game.color === 'w';
   const won = (o.result === '1-0' && white) || (o.result === '0-1' && !white);
-  const dw = white ? o.ratings.dw : -o.ratings.dw;
+  const dw = white ? o.ratings.dw : o.ratings.db;
   const myNew = white ? o.ratings.w : o.ratings.b;
+  const myReady = white ? o.ratings.wReady : o.ratings.bReady;
+  const myGamesPlayed = white ? o.ratings.wGames : o.ratings.bGames;
+  const ratingSummary = myReady
+    ? (dw == null ? `New rating: ${myNew}` : `Rating ${dw >= 0 ? '+' : ''}${dw} (${myNew})`)
+    : `Provisional placement · ${myGamesPlayed}/5 matches`; 
   $('#status').textContent = '';
   $('#actions').classList.add('hidden'); $('#drawNote').textContent = '';
   hello(); render(); setTimeout(loadBoard, 1500);
   veil({
     title: o.result === '1/2-1/2' ? 'Draw' : won ? 'You won' : 'You lost',
-    sub: `By ${o.reason}. Rating ${dw >= 0 ? '+' : ''}${dw} (${myNew}).`,
+    sub: `By ${o.reason}. ${ratingSummary}.${o.saved === false ? (o.tournamentPaused ? ' Result is waiting to be saved; the tournament is paused.' : ' Result could not be saved to your account.') : ''}`,
     button: { label: 'Play again', primary: true, onClick: () => {
       game = null; selected = null; targets = [];
       $('#gamePanel').classList.add('hidden'); $('#lobby').classList.remove('hidden');
@@ -765,16 +826,20 @@ socket.on('over', (o) => {
 
 /* ---------- drawing ---------- */
 function paintPlayers() {
-  const me = game ? (game.color === 'w' ? game.white : game.black) : { name: myName || 'You', rating: myRating };
-  const opp = game ? (game.color === 'w' ? game.black : game.white) : { name: 'Opponent', rating: '' };
+  const me = game ? (game.color === 'w' ? game.white : game.black)
+    : { name: myName || 'You', rating: myRating, games: myGames, authed: myAuthed, ratingReady: myRating != null };
+  const opp = game ? (game.color === 'w' ? game.black : game.white) : { name: 'Opponent', rating: null, authed: false };
   for (const [k, p] of [['bot', me], ['top', opp]]) {
     $(`#${k}Name`).textContent = p.name || '';
-    $(`#${k}Rating`).textContent = p.rating ? `${p.rating}${p.rd ? ` · RD ${Math.round(p.rd)}` : ''}` : '';
+    $(`#${k}Rating`).textContent = p.ratingReady && p.rating != null
+      ? `${p.rating}${p.rd ? ` · RD ${Math.round(p.rd)}` : ''}`
+      : p.authed ? `Provisional · ${p.games || 0}/5` : (p.name === 'Opponent' ? '' : 'Unrated guest');
     $(`#${k}Av`).textContent = (p.name || '?')[0].toUpperCase();
   }
 }
 function setStatus() {
   if (!game || game.over) return;
+  if (game.recovering) { $('#status').textContent = 'Tournament game restored · waiting for both players to reconnect'; return; }
   const mine = game.chess.turn() === game.color, chk = game.chess.inCheck();
   $('#status').textContent = chk ? (mine ? 'You are in check' : 'Check') : mine ? 'Your move' : "Opponent's move";
 }
@@ -782,7 +847,7 @@ const fmt = (ms) => { const s = Math.ceil(Math.max(0, ms) / 1000); return `${Mat
 function drawClocks() {
   const botC = $('#botClock'), topC = $('#topClock');
   if (!game) { botC.textContent = topC.textContent = '--:--'; for (const c of [botC, topC]) c.className = 'clock'; $('#botCard').classList.remove('turn'); $('#topCard').classList.remove('turn'); return; }
-  const el = game.over ? 0 : Date.now() - game.stamp, me = game.color, opp = me === 'w' ? 'b' : 'w';
+  const el = game.over || game.recovering ? 0 : Date.now() - game.stamp, me = game.color, opp = me === 'w' ? 'b' : 'w';
   for (const [clockEl, card, c] of [[botC, $('#botCard'), me], [topC, $('#topCard'), opp]]) {
     const v = game.clock[c] - (game.turn === c ? el : 0), on = game.turn === c && !game.over;
     clockEl.textContent = fmt(v);
