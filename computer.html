@@ -18,6 +18,30 @@
     .tag { display:inline-block; margin-left:7px; padding:0 6px; border-radius:5px; background:#edf4e8; color:#456c2f; font-weight:800; }
     .eval { font-size:1.5rem; font-weight:800; }
     .hint { color:var(--muted); font-size:.88rem; }
+    .review-summary { display:flex; flex-wrap:wrap; align-items:center; gap:7px; margin:12px 0 14px; }
+    .review-summary strong { width:100%; font-size:.92rem; }
+    .review-count { display:inline-flex; align-items:center; gap:5px; padding:5px 8px; border:1px solid var(--line); border-radius:7px; font-size:.78rem; font-weight:750; }
+    .review-list { display:grid; gap:9px; }
+    .review-card { border:1px solid var(--line); border-radius:10px; overflow:hidden; background:var(--panel2); }
+    .review-card-head { width:100%; display:flex; align-items:center; gap:9px; padding:10px 11px; border:0; background:transparent; color:var(--ink); text-align:left; cursor:pointer; font:inherit; }
+    .review-card-head:hover { background:rgba(120,140,110,.08); }
+    .review-number { color:var(--muted); min-width:30px; font-size:.82rem; font-weight:700; }
+    .review-san { min-width:42px; font-weight:850; font-size:1rem; }
+    .review-icon { display:inline-grid; place-items:center; width:25px; height:25px; flex:0 0 25px; border-radius:50%; font-size:.88rem; font-weight:900; background:#e8eee6; color:#355b36; }
+    .review-label { font-weight:800; font-size:.88rem; flex:1; }
+    .review-loss { color:var(--muted); font-size:.78rem; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .review-explanation { margin:0; padding:0 12px 8px 55px; color:var(--ink); font-size:.84rem; line-height:1.45; }
+    .review-alternative { margin:0; padding:0 12px 11px 55px; color:var(--muted); font-size:.78rem; line-height:1.4; }
+    .review-card-brilliant .review-icon { background:#dff5fb; color:#087e9c; }
+    .review-card-best .review-icon, .review-card-great .review-icon { background:#e3f2df; color:#28743a; }
+    .review-card-excellent .review-icon { background:#e7f0e3; color:#477b3e; }
+    .review-card-good .review-icon { background:#e9eee8; color:#60745c; }
+    .review-card-inaccuracy .review-icon { background:#fff2d9; color:#9a6500; }
+    .review-card-mistake .review-icon { background:#ffe8d8; color:#b45a18; }
+    .review-card-blunder .review-icon, .review-card-missed-win .review-icon { background:#fbe1e1; color:#b3261e; }
+    .review-card-checkmate .review-icon { background:#e8e1f8; color:#6841a5; }
+    .review-placeholder { color:var(--muted); font-size:.88rem; padding:10px 0; }
+    #return-position { margin-top:8px; }
     @media(max-width:780px){ main { grid-template-columns:1fr; margin:14px auto; padding:0 12px 36px; gap:12px; } .panel { padding:14px; } }
   </style>
 </head>
@@ -32,6 +56,7 @@
         <button id="undo">Undo</button>
       </div>
       <div id="board" class="zz-board" aria-label="Chess board"></div>
+      <button id="return-position" hidden type="button">Return to current position</button>
       <p id="status" class="status" role="status" aria-live="polite">Loading Stockfish…</p>
       <div class="row"><button id="analyze">Analyze position</button><button id="review">Review game</button></div>
       <p class="hint">Engine runs locally in your browser. Stockfish's JavaScript and WebAssembly files are downloaded from Zugzwang's public Supabase Storage bucket.</p>
@@ -41,9 +66,12 @@
       <div class="eval" id="eval">—</div>
       <p id="best" class="status">Choose a move or analyze the position.</p>
       <div id="moves" class="moves"></div>
-      <h3>Move annotations</h3>
-      <p class="hint">!! Brilliant · ! Great · ★ Excellent · ⓘ Interesting · ?! Inaccuracy · ? Mistake · ?? Blunder</p>
-      <div id="annotations"></div>
+      <h3>Move-by-move analysis</h3>
+      <p class="hint">Each move is checked against Stockfish. Select a move to view the resulting position.</p>
+      <div id="review-summary" class="review-summary" hidden></div>
+      <div id="annotations" class="review-list" aria-live="polite">
+        <p class="review-placeholder">Finish a few moves, then select Review game.</p>
+      </div>
     </aside>
   </main>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
@@ -56,6 +84,7 @@
     let chess = new Chess(), selected = null, targets = [], lastMove = [], worker = null;
     let ready = false, busy = false, lastEval = null, bestMove = null;
     let queuedSearch = null, pendingBotMove = false, engineFailed = false;
+    let reviewRunning = false, reviewPreview = null, reviewedRows = [];
     const board = new ZugzwangBoard($('board'), click);
 
     function initEngine() {
@@ -132,19 +161,32 @@
       if (!startSearch(request)) $('status').textContent = 'Stockfish is not ready yet.';
     }
     function render() {
-      board.render({ position:chess.board(), orientation:'white', selected, targets, lastMove, inCheck:chess.isCheck(), turn:chess.turn() });
+      const view = reviewPreview ? new Chess(reviewPreview.fen) : chess;
+      const viewLastMove = reviewPreview ? reviewPreview.lastMove : lastMove;
+      board.render({
+        position:view.board(), orientation:'white',
+        selected:reviewPreview ? null : selected,
+        targets:reviewPreview ? [] : targets,
+        lastMove:viewLastMove, inCheck:view.isCheck(), turn:view.turn()
+      });
       const history = chess.history();
       $('moves').textContent = history.map((move, index) => (index % 2 === 0 ? Math.floor(index / 2 + 1) + '. ' : '') + move).join('  ');
-      $('status').textContent = chess.isGameOver() ? (chess.isCheckmate() ? 'Checkmate' : chess.isDraw() ? 'Draw' : 'Game over') : (chess.turn() === 'w' ? 'Your move' : 'Stockfish to move');
+      $('return-position').hidden = !reviewPreview;
+      if (reviewPreview) {
+        $('status').textContent = `Reviewing ${reviewPreview.label} · ${view.turn() === 'w' ? 'White' : 'Black'} to move`;
+      } else {
+        $('status').textContent = chess.isGameOver() ? (chess.isCheckmate() ? 'Checkmate' : chess.isDraw() ? 'Draw' : 'Game over') : (chess.turn() === 'w' ? 'Your move' : 'Stockfish to move');
+      }
     }
     function click(square) {
-      if (chess.isGameOver() || chess.turn() !== 'w' || busy) return;
+      if (reviewPreview || reviewRunning || chess.isGameOver() || chess.turn() !== 'w' || busy) return;
       const piece = chess.get(square);
       if (selected && targets.includes(square)) {
         try {
           const move = chess.move({ from:selected, to:square, promotion:'q' });
           if (move) {
             lastMove = [move.from, move.to]; selected = null; targets = [];
+            invalidateReview();
             render(); askEngine(chess.fen(), Number($('depth').value), true); return;
           }
         } catch { /* illegal move; let the player select another square */ }
@@ -153,69 +195,353 @@
       targets = selected ? chess.moves({ square:selected, verbose:true }).map((move) => move.to) : [];
       render();
     }
+    function invalidateReview(message = 'The game changed. Run Review game again for updated analysis.') {
+      reviewedRows = [];
+      reviewPreview = null;
+      $('review-summary').hidden = true;
+      $('annotations').replaceChildren();
+      const placeholder = document.createElement('p');
+      placeholder.className = 'review-placeholder';
+      placeholder.textContent = message;
+      $('annotations').append(placeholder);
+    }
     function makeBotMove(uci) {
       try {
         const move = chess.move({ from:uci.slice(0,2), to:uci.slice(2,4), promotion:uci[4] || 'q' });
         if (move) lastMove = [move.from, move.to];
       } catch { /* Stockfish should always return a legal move for this position. */ }
-      selected = null; targets = []; render();
+      selected = null; targets = [];
+      invalidateReview();
+      render();
     }
-    function classify(loss) {
-      if (loss <= .08) return ['!!','Brilliant'];
-      if (loss <= .18) return ['!','Great'];
-      if (loss <= .35) return ['★','Excellent'];
-      if (loss <= .65) return ['?!','Inaccuracy'];
-      if (loss <= 1.2) return ['?','Mistake'];
-      return ['??','Blunder'];
+    function uciToSan(fen, uci) {
+      if (!uci || uci === '0000') return null;
+      try {
+        const position = new Chess(fen);
+        const move = position.move({
+          from:uci.slice(0, 2), to:uci.slice(2, 4),
+          ...(uci[4] ? { promotion:uci[4] } : {})
+        });
+        return move ? move.san : null;
+      } catch { return null; }
     }
-    function evaluateFen(fen) {
-      return new Promise((resolve) => {
-        let value = 0;
-        const turn = fen.split(' ')[1];
-        const handler = (event) => {
-          const text = String(event.data), match = text.match(/info .*\bscore cp (-?\d+)/);
-          if (match) value = (Number(match[1]) / 100) * (turn === 'w' ? 1 : -1);
-          if (/bestmove /.test(text)) { worker.removeEventListener('message', handler); busy = false; resolve(value); }
+    function scoreToWhitePawns(score, fen) {
+      if (!score) return null;
+      let value;
+      if (score.type === 'mate') {
+        const sign = Math.sign(score.value) || 1;
+        value = sign * (50 - Math.min(50, Math.abs(score.value)) * 0.01);
+      } else {
+        value = score.value / 100;
+      }
+      return fen.split(' ')[1] === 'w' ? value : -value;
+    }
+    function evaluateFen(fen, depth) {
+      return new Promise((resolve, reject) => {
+        if (!worker || !ready || busy) {
+          reject(new Error('The engine is busy or not ready.'));
+          return;
+        }
+        let bestScore = null, bestDepth = -1, pv = [];
+        let settled = false;
+        const cleanup = () => {
+          clearTimeout(timeout);
+          worker.removeEventListener('message', handler);
+          worker.removeEventListener('error', onWorkerError);
+          busy = false;
         };
-        busy = true; worker.addEventListener('message', handler);
-        worker.postMessage('position fen ' + fen); worker.postMessage('go depth 10');
+        const finish = (result) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve(result);
+        };
+        const fail = (error) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          reject(error);
+        };
+        const onWorkerError = (event) => {
+          fail(new Error(event.message || 'The Stockfish worker failed during review.'));
+        };
+        const timeout = setTimeout(() => {
+          try { worker.postMessage('stop'); } catch {}
+          fail(new Error('Stockfish took too long to analyse a position. Try a shorter game or lower review depth.'));
+        }, 60000);
+        const handler = (event) => {
+          const text = String(event.data);
+          if (text.startsWith('info ')) {
+            const scoreMatch = text.match(/\bscore\s+(cp|mate)\s+(-?\d+)/);
+            const depthMatch = text.match(/\bdepth\s+(\d+)/);
+            const depthValue = depthMatch ? Number(depthMatch[1]) : 0;
+            if (scoreMatch && depthValue >= bestDepth) {
+              bestDepth = depthValue;
+              bestScore = { type:scoreMatch[1], value:Number(scoreMatch[2]), depth:depthValue };
+              const pvMatch = text.match(/\bpv\s+(.+)$/);
+              pv = pvMatch ? pvMatch[1].trim().split(/\s+/) : [];
+            }
+          }
+          const bestMatch = text.match(/^bestmove\s+(\S+)/);
+          if (bestMatch) {
+            if (!bestScore) {
+              finish(null);
+              return;
+            }
+            finish({
+              whiteScore:scoreToWhitePawns(bestScore, fen),
+              score:bestScore,
+              bestMove:bestMatch[1],
+              pv,
+              depth:bestDepth
+            });
+          }
+        };
+        busy = true;
+        worker.addEventListener('message', handler);
+        worker.addEventListener('error', onWorkerError);
+        try {
+          worker.postMessage('position fen ' + fen);
+          worker.postMessage('go depth ' + depth);
+        } catch (error) {
+          fail(error);
+        }
       });
     }
-
+    function isSoundMaterialSacrifice(row) {
+      // Only award Brilliant when a non-pawn piece is deliberately offered,
+      // the opponent can take it immediately, and there is no legal recapture.
+      if (!['n', 'b', 'r', 'q'].includes(row.move.piece)) return false;
+      try {
+        const afterMove = new Chess(row.after);
+        const captures = afterMove.moves({ verbose:true })
+          .filter((candidate) => candidate.to === row.move.to && candidate.captured);
+        for (const capture of captures) {
+          const afterCapture = new Chess(row.after);
+          afterCapture.move({ from:capture.from, to:capture.to, ...(capture.promotion ? { promotion:capture.promotion } : {}) });
+          const canRecapture = afterCapture.moves({ verbose:true })
+            .some((reply) => reply.to === row.move.to && reply.captured);
+          if (!canRecapture) return true;
+        }
+      } catch { /* Treat uncertain sacrifice detection conservatively. */ }
+      return false;
+    }
+    function classifyMove(row, before, after, loss, bestSan) {
+      if (row.checkmate) return { key:'checkmate', icon:'♔', name:'Checkmate' };
+      const bestMatch = before.bestMove === row.uci;
+      const moverBefore = row.color === 'w' ? before.whiteScore : -before.whiteScore;
+      const moverAfter = row.color === 'w' ? after.whiteScore : -after.whiteScore;
+      if (moverBefore >= 3 && moverAfter <= 1.5) return { key:'missed-win', icon:'??', name:'Missed win' };
+      if (bestMatch && loss <= 0.15 && isSoundMaterialSacrifice(row)) {
+        return { key:'brilliant', icon:'!!', name:'Brilliant' };
+      }
+      if (bestMatch && loss <= 0.12) return { key:'best', icon:'✓', name:'Best' };
+      if (loss <= 0.08) return { key:'great', icon:'!', name:'Great' };
+      if (loss <= 0.18) return { key:'excellent', icon:'★', name:'Excellent' };
+      if (loss <= 0.35) return { key:'good', icon:'○', name:'Good' };
+      if (loss <= 0.75) return { key:'inaccuracy', icon:'?!', name:'Inaccuracy' };
+      if (loss <= 1.5) return { key:'mistake', icon:'?', name:'Mistake' };
+      return { key:'blunder', icon:'??', name:'Blunder' };
+    }
+    function moveExplanation(label, loss, bestSan, replySan, row) {
+      if (label.key === 'checkmate') return `${row.san} ends the game with checkmate.`;
+      if (label.key === 'brilliant') return 'A sound material sacrifice: Stockfish ranks it first and the offered piece cannot simply be won without compensation.';
+      if (label.key === 'best') return `Matches Stockfish’s top choice and keeps the evaluation essentially unchanged${replySan ? `. The engine expects ${replySan} in reply` : ''}.`;
+      if (label.key === 'great') return `A very strong move, close to the engine’s preferred continuation${bestSan ? ` (${bestSan})` : ''}${replySan ? `. The engine expects ${replySan} in reply` : ''}.`;
+      if (label.key === 'excellent') return `A strong move that gives up only a small amount of the position’s evaluation${replySan ? `. The engine’s strongest reply is ${replySan}` : ''}.`;
+      if (label.key === 'good') return `A playable move that keeps the position healthy, although a slightly stronger continuation was available${replySan ? `. Watch for ${replySan}` : ''}.`;
+      const alternative = bestSan ? ` Stockfish preferred ${bestSan}.` : '';
+      const reply = replySan ? ` The strongest reply is ${replySan}.` : '';
+      if (label.key === 'inaccuracy') return `This slightly weakens the position and gives up about ${loss.toFixed(2)} pawns of evaluation.${alternative}${reply}`;
+      if (label.key === 'mistake') return `A significant error, losing about ${loss.toFixed(2)} pawns of evaluation.${alternative}${reply}`;
+      if (label.key === 'missed-win') return `The position was winning, but this move lets much of that advantage slip away.${alternative}${reply}`;
+      return `A major error that loses about ${loss.toFixed(2)} pawns of evaluation and gives the opponent a strong opportunity.${alternative}${reply}`;
+    }
+    function setReviewControls(disabled) {
+      $('review').disabled = disabled;
+      $('analyze').disabled = disabled;
+      $('new').disabled = disabled;
+      $('undo').disabled = disabled;
+      $('depth').disabled = disabled;
+    }
+    function renderReviewSummary(rows) {
+      const summary = $('review-summary');
+      summary.replaceChildren();
+      const heading = document.createElement('strong');
+      heading.textContent = `${rows.length} ${rows.length === 1 ? 'move' : 'moves'} reviewed`;
+      summary.append(heading);
+      const order = [
+        ['brilliant', 'Brilliant'], ['best', 'Best'], ['great', 'Great'],
+        ['excellent', 'Excellent'], ['good', 'Good'], ['inaccuracy', 'Inaccuracy'],
+        ['mistake', 'Mistake'], ['blunder', 'Blunder'], ['missed-win', 'Missed win'],
+        ['checkmate', 'Checkmate']
+      ];
+      const counts = new Map();
+      for (const row of rows) counts.set(row.label.key, (counts.get(row.label.key) || 0) + 1);
+      for (const [key, name] of order) {
+        const count = counts.get(key) || 0;
+        if (!count) continue;
+        const pill = document.createElement('span');
+        pill.className = `review-count review-card-${key}`;
+        pill.textContent = `${rowIcon(key)} ${name} ${count}`;
+        summary.append(pill);
+      }
+      summary.hidden = false;
+    }
+    function rowIcon(key) {
+      return ({
+        brilliant:'!!', best:'✓', great:'!', excellent:'★', good:'○',
+        inaccuracy:'?!', mistake:'?', blunder:'??', 'missed-win':'??', checkmate:'♔'
+      })[key] || '·';
+    }
+    function renderReviewRows(rows) {
+      const container = $('annotations');
+      container.replaceChildren();
+      for (const row of rows) {
+        const card = document.createElement('article');
+        card.className = `review-card review-card-${row.label.key}`;
+        const head = document.createElement('button');
+        head.type = 'button';
+        head.className = 'review-card-head';
+        head.setAttribute('aria-label', `Show position after ${row.moveNumber}${row.color === 'w' ? '.' : '…'} ${row.san}`);
+        const number = document.createElement('span');
+        number.className = 'review-number';
+        number.textContent = `${row.moveNumber}${row.color === 'w' ? '.' : '…'}`;
+        const san = document.createElement('span');
+        san.className = 'review-san';
+        san.textContent = row.san;
+        const icon = document.createElement('span');
+        icon.className = 'review-icon';
+        icon.textContent = row.label.icon;
+        const name = document.createElement('span');
+        name.className = 'review-label';
+        name.textContent = row.label.name;
+        const loss = document.createElement('span');
+        loss.className = 'review-loss';
+        loss.textContent = row.label.key === 'checkmate' ? 'MATE' : `−${row.loss.toFixed(2)}`;
+        head.append(number, san, icon, name, loss);
+        head.addEventListener('click', () => {
+          reviewPreview = { fen:row.after, lastMove:[row.move.from, row.move.to], label:`${row.moveNumber}${row.color === 'w' ? '.' : '…'} ${row.san}` };
+          render();
+        });
+        const explanation = document.createElement('p');
+        explanation.className = 'review-explanation';
+        explanation.textContent = row.explanation;
+        card.append(head, explanation);
+        if (row.bestSan && row.bestSan !== row.san) {
+          const alternative = document.createElement('p');
+          alternative.className = 'review-alternative';
+          alternative.textContent = `Better choice: ${row.bestSan}`;
+          card.append(alternative);
+        }
+        if (row.replySan && row.label.key !== 'checkmate') {
+          const reply = document.createElement('p');
+          reply.className = 'review-alternative';
+          reply.textContent = `Engine’s strongest reply: ${row.replySan}`;
+          card.append(reply);
+        }
+        container.append(card);
+      }
+      renderReviewSummary(rows);
+    }
+    $('return-position').addEventListener('click', () => {
+      reviewPreview = null;
+      render();
+    });
     $('new').addEventListener('click', () => {
       queuedSearch = null; pendingBotMove = false;
       if (worker && busy) worker.postMessage('stop');
-      busy = false;
+      busy = false; reviewPreview = null; reviewedRows = [];
       chess = new Chess(); selected = null; targets = []; lastMove = [];
-      render(); $('eval').textContent = '—'; $('best').textContent = 'New game. Your move.'; $('annotations').replaceChildren();
+      $('review-summary').hidden = true;
+      $('annotations').innerHTML = '<p class="review-placeholder">Play a game, then select Review game.</p>';
+      render(); $('eval').textContent = '—'; $('best').textContent = 'New game. Your move.';
     });
     $('undo').addEventListener('click', () => {
       if (!chess.history().length || busy) return;
+      reviewPreview = null; reviewedRows = [];
+      $('review-summary').hidden = true;
+      $('annotations').innerHTML = '<p class="review-placeholder">The game changed. Run Review game again for updated analysis.</p>';
       chess.undo(); if (chess.turn() === 'b') chess.undo();
       selected = null; targets = [];
       const history = chess.history({ verbose:true });
       const last = history[history.length - 1]; lastMove = last ? [last.from, last.to] : [];
       render();
     });
-    $('analyze').addEventListener('click', () => askEngine(chess.fen(), Number($('depth').value)));
+    $('analyze').addEventListener('click', () => {
+      reviewPreview = null;
+      askEngine(chess.fen(), Number($('depth').value));
+    });
     $('review').addEventListener('click', async () => {
-      if (!ready || busy) return;
+      if (!ready || busy || reviewRunning) return;
       const history = chess.history({ verbose:true });
-      if (!history.length) { $('annotations').textContent = 'Play a few moves first.'; return; }
-      const copy = new Chess(), rows = [];
+      if (!history.length) {
+        $('annotations').innerHTML = '<p class="review-placeholder">Play a few moves first.</p>';
+        return;
+      }
+      const copy = new Chess(), rows = [], positions = [copy.fen()];
       for (let i = 0; i < history.length; i++) {
-        const before = copy.fen(), move = history[i]; copy.move(move);
-        rows.push({ n:i+1, san:move.san, before, after:copy.fen(), color:move.color });
+        const move = history[i];
+        copy.move({ from:move.from, to:move.to, ...(move.promotion ? { promotion:move.promotion } : {}) });
+        rows.push({
+          ply:i + 1, moveNumber:Math.ceil((i + 1) / 2), san:move.san,
+          before:positions[i], after:copy.fen(), move, color:move.color,
+          uci:move.from + move.to + (move.promotion || ''), checkmate:copy.isCheckmate(),
+          draw:copy.isDraw() && !copy.isCheckmate()
+        });
+        positions.push(copy.fen());
       }
-      $('annotations').textContent = 'Reviewing each move with Stockfish…';
-      const labels = [];
-      for (const row of rows) {
-        const before = await evaluateFen(row.before), after = await evaluateFen(row.after);
-        const loss = row.color === 'w' ? before - after : after - before;
-        const [symbol, name] = classify(Math.max(0, loss));
-        labels.push(`<p>${Math.ceil(row.n / 2)}${row.color === 'w' ? '.' : '…'} ${row.san} <b class="tag">${symbol} ${name}</b> <small>−${Math.max(0, loss).toFixed(2)}</small></p>`);
+
+      reviewRunning = true;
+      setReviewControls(true);
+      reviewPreview = null;
+      $('review-summary').hidden = true;
+      $('annotations').replaceChildren();
+      const depth = Math.max(10, Math.min(14, Number($('depth').value) || 12));
+      const analyses = [];
+      const finalRow = rows[rows.length - 1];
+      const finalPositionIsTerminal = copy.isGameOver();
+      try {
+        for (let i = 0; i < positions.length; i++) {
+          $('annotations').textContent = `Analysing position ${i + 1} of ${positions.length} with Stockfish (depth ${depth})…`;
+          // A terminal position has no legal best move; its result is already known.
+          if (i === positions.length - 1 && finalPositionIsTerminal) {
+            analyses.push({
+              whiteScore:finalRow.checkmate ? (finalRow.color === 'w' ? 50 : -50) : 0,
+              bestMove:'0000', score:null, pv:[], depth:0
+            });
+            continue;
+          }
+          const analysis = await evaluateFen(positions[i], depth);
+          if (!analysis) throw new Error(`Stockfish did not return an evaluation for position ${i + 1}.`);
+          analyses.push(analysis);
+        }
+        for (const row of rows) {
+          const before = analyses[row.ply - 1], after = analyses[row.ply];
+          const rawLoss = row.color === 'w'
+            ? before.whiteScore - after.whiteScore
+            : after.whiteScore - before.whiteScore;
+          const loss = Math.max(0, rawLoss);
+          const bestSan = uciToSan(row.before, before.bestMove);
+          const replySan = uciToSan(row.after, after.bestMove);
+          const label = classifyMove(row, before, after, loss, bestSan);
+          row.loss = loss;
+          row.label = label;
+          row.bestSan = bestSan;
+          row.replySan = replySan;
+          row.explanation = moveExplanation(label, loss, bestSan, replySan, row);
+        }
+        reviewedRows = rows;
+        renderReviewRows(rows);
+        $('best').textContent = `Review complete · Stockfish depth ${depth}`;
+      } catch (error) {
+        $('annotations').textContent = error.message || 'The game review could not be completed.';
+        $('best').textContent = 'Review incomplete';
+      } finally {
+        reviewRunning = false;
+        setReviewControls(false);
+        render();
       }
-      $('annotations').innerHTML = labels.join('');
     });
     render(); initEngine();
   </script>

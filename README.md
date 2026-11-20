@@ -105,4 +105,5 @@ Open `/api/health` on the deployed site to verify that both browser Stockfish fi
 The computer page queues a move made while Stockfish is still downloading/initializing, instead of silently dropping the engine request. It also displays worker/Storage/WASM startup errors on the page. The uploaded pair must be `stockfish-19-lite-single.js` and its matching `stockfish-19-lite-single.wasm` from the same `stockfish@19.0.1` package version.
 #   c h e s s . c o m - a l t e r n a t i v e  
  #   c h e s s . c o m - a l t e r n a t i v e  
+ #   c h e s s . c o m - a l t e r n a t i v e  
  
