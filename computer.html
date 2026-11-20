@@ -55,20 +55,47 @@
     const $ = (id) => document.getElementById(id);
     let chess = new Chess(), selected = null, targets = [], lastMove = [], worker = null;
     let ready = false, busy = false, lastEval = null, bestMove = null;
+    let queuedSearch = null, pendingBotMove = false, engineFailed = false;
     const board = new ZugzwangBoard($('board'), click);
 
     function initEngine() {
       try {
         worker = new Worker('/vendor/stockfish/stockfish-19-lite-single.js');
         worker.onmessage = (event) => onEngine(String(event.data));
+        worker.onerror = (event) => {
+          engineFailed = true; ready = false; busy = false; queuedSearch = null;
+          const detail = event.message ? ' (' + event.message + ')' : '';
+          $('status').textContent = 'Stockfish failed to load' + detail + '. Check that /vendor/stockfish/stockfish-19-lite-single.js and its matching .wasm both return HTTP 200.';
+          $('best').textContent = 'The browser engine could not start.';
+        };
+        worker.onmessageerror = () => {
+          engineFailed = true; ready = false; busy = false;
+          $('status').textContent = 'Stockfish returned an unreadable worker message. Reload the page and check the engine assets.';
+        };
         worker.postMessage('uci');
-      } catch {
-        $('status').textContent = 'Stockfish could not start. Run npm install and check /vendor/stockfish assets.';
+      } catch (error) {
+        engineFailed = true;
+        $('status').textContent = 'Stockfish could not start: ' + (error.message || 'Worker creation failed') + '. Check npm install and /vendor/stockfish assets.';
       }
+    }
+    function startSearch(request) {
+      if (!worker || !ready || engineFailed || busy) return false;
+      busy = true; pendingBotMove = request.bot;
+      $('best').textContent = request.bot ? 'Stockfish is thinking…' : 'Thinking…';
+      worker.postMessage('position fen ' + request.fen);
+      worker.postMessage('go depth ' + request.depth);
+      return true;
     }
     function onEngine(line) {
       if (line === 'uciok') worker.postMessage('isready');
-      if (line === 'readyok') { ready = true; $('status').textContent = 'Stockfish ready · White to move'; }
+      if (line === 'readyok') {
+        ready = true;
+        $('status').textContent = 'Stockfish ready · White to move';
+        if (queuedSearch) {
+          const request = queuedSearch; queuedSearch = null;
+          if (startSearch(request)) $('status').textContent = request.bot ? 'Your move has been sent to Stockfish…' : 'Analyzing position…';
+        }
+      }
       const score = line.match(/info .*\bscore (cp|mate) (-?\d+).*\bdepth (\d+)/);
       if (score) {
         lastEval = score[1] === 'cp' ? Number(score[2]) / 100 : (Number(score[2]) > 0 ? 99 : -99);
@@ -78,14 +105,25 @@
       const best = line.match(/bestmove ([a-h][1-8][a-h][1-8][qrbn]?)/);
       if (best) {
         busy = false; bestMove = best[1];
-        if (window.pendingBot) { window.pendingBot = null; makeBotMove(bestMove); }
+        const shouldPlay = pendingBotMove; pendingBotMove = false;
+        if (shouldPlay && chess.turn() === 'b' && !chess.isGameOver()) makeBotMove(bestMove);
         else $('best').textContent = 'Best move: ' + bestMove;
       }
     }
     function askEngine(fen, depth, bot = false) {
-      if (!ready || busy) return;
-      $('best').textContent = 'Thinking…'; busy = true; window.pendingBot = bot ? true : null;
-      worker.postMessage('stop'); worker.postMessage('position fen ' + fen); worker.postMessage('go depth ' + depth);
+      if (engineFailed || !worker) {
+        $('status').textContent = 'Stockfish is unavailable. Check the browser engine files on the server.';
+        return;
+      }
+      const request = { fen, depth, bot };
+      if (!ready) {
+        queuedSearch = request;
+        $('status').textContent = 'Stockfish is still loading. Your move is queued.';
+        $('best').textContent = 'Waiting for the engine to finish loading…';
+        return;
+      }
+      if (busy) return;
+      if (!startSearch(request)) $('status').textContent = 'Stockfish is not ready yet.';
     }
     function render() {
       board.render({ position:chess.board(), orientation:'white', selected, targets, lastMove, inCheck:chess.isCheck(), turn:chess.turn() });
@@ -139,6 +177,9 @@
     }
 
     $('new').addEventListener('click', () => {
+      queuedSearch = null; pendingBotMove = false;
+      if (worker && busy) worker.postMessage('stop');
+      busy = false;
       chess = new Chess(); selected = null; targets = []; lastMove = [];
       render(); $('eval').textContent = '—'; $('best').textContent = 'New game. Your move.'; $('annotations').replaceChildren();
     });

@@ -81,6 +81,7 @@ async function requireAccount(req, res) {
   }
   try { return await accountFor(bearer(req)); }
   catch (e) {
+    console.error('Account authentication/profile lookup failed:', e.message || e);
     const invalid = e.message === 'invalid session';
     res.status(invalid ? 401 : 500).json({ error: invalid ? 'Please log in again.' : 'Could not load your account.' });
     return null;
@@ -134,11 +135,12 @@ app.get('/api/friends', async (req, res) => {
   if (!acct) return;
   const { data: links, error } = await db.from('friendships').select('*')
     .or(`requester_id.eq.${acct.id},addressee_id.eq.${acct.id}`).order('created_at', { ascending: false });
-  if (error) return res.status(500).json({ error: 'Could not load friends.' });
+  if (error) { console.error('/api/friends query failed:', error); return res.status(500).json({ error: 'Could not load friends.' }); }
   const ids = [...new Set((links || []).map((x) => x.requester_id === acct.id ? x.addressee_id : x.requester_id))];
-  const { data: profiles } = ids.length
+  const { data: profiles, error: profileError } = ids.length
     ? await db.from('profiles').select('id,username,rating,games_played').in('id', ids)
-    : { data: [] };
+    : { data: [], error: null };
+  if (profileError) console.error('/api/friends profile lookup failed:', profileError);
   const byId = new Map((profiles || []).map((p) => [p.id, p]));
   const friends = [], incoming = [], outgoing = [];
   for (const link of links || []) {
@@ -216,7 +218,7 @@ app.get('/api/mod/reports', async (req, res) => {
   if (!isAdmin(acct.id)) return res.status(403).json({ error: 'Moderator access required.' });
   const { data: reports, error } = await db.from('moderation_reports').select('*')
     .order('created_at', { ascending: false }).limit(100);
-  if (error) return res.status(500).json({ error: 'Could not load reports.' });
+  if (error) { console.error('/api/mod/reports query failed:', error); return res.status(500).json({ error: 'Could not load reports.' }); }
   const ids = [...new Set((reports || []).flatMap((r) => [r.reporter_id, r.reported_id]).filter(Boolean))];
   const { data: profiles } = ids.length ? await db.from('profiles').select('id,username').in('id', ids) : { data: [] };
   const names = new Map((profiles || []).map((p) => [p.id, p.username]));
@@ -268,7 +270,7 @@ app.get('/api/mod/integrity', async (req, res) => {
   if (!acct) return;
   if (!isAdmin(acct.id)) return res.status(403).json({ error: 'Moderator access required.' });
   const { data, error } = await db.from('integrity_flags').select('*').order('created_at', { ascending: false }).limit(100);
-  if (error) return res.status(500).json({ error: 'Could not load integrity flags.' });
+  if (error) { console.error('/api/mod/integrity query failed:', error); return res.status(500).json({ error: 'Could not load integrity flags.' }); }
   const ids = [...new Set((data || []).map((x) => x.player_id).filter(Boolean))];
   const { data: profiles } = ids.length ? await db.from('profiles').select('id,username').in('id', ids) : { data: [] };
   const names = new Map((profiles || []).map((p) => [p.id, p.username]));
@@ -301,7 +303,25 @@ app.post('/api/mod/report-status', async (req, res) => {
 
 // Browser Stockfish assets are served same-origin so Worker() can load the JS/WASM pair.
 const stockfishDir = path.join(__dirname, 'node_modules', 'stockfish');
-if (fs.existsSync(stockfishDir)) app.use('/vendor/stockfish', express.static(stockfishDir, { immutable: true, maxAge: '1y' }));
+const browserStockfishJs = path.join(stockfishDir, 'stockfish-19-lite-single.js');
+const browserStockfishWasm = path.join(stockfishDir, 'stockfish-19-lite-single.wasm');
+if (fs.existsSync(stockfishDir)) {
+  app.use('/vendor/stockfish', express.static(stockfishDir, { immutable: true, maxAge: '1y' }));
+  console.log('Browser Stockfish assets:', {
+    js: fs.existsSync(browserStockfishJs), wasm: fs.existsSync(browserStockfishWasm)
+  });
+} else {
+  console.warn('Stockfish npm package is missing; /computer.html cannot start its browser engine until npm install runs.');
+}
+app.get('/api/health', (req, res) => {
+  const engineJs = fs.existsSync(browserStockfishJs);
+  const engineWasm = fs.existsSync(browserStockfishWasm);
+  res.status(engineJs && engineWasm ? 200 : 503).json({
+    ok: engineJs && engineWasm,
+    supabaseConfigured: !!db,
+    browserStockfish: { js: engineJs, wasm: engineWasm }
+  });
+});
 
 // Public CC0 puzzle pool imported from the Lichess puzzle CSV (see puzzle-import.js).
 app.get('/api/puzzles/random', async (req, res) => {
@@ -310,11 +330,11 @@ app.get('/api/puzzles/random', async (req, res) => {
   const max = Math.max(min, Math.min(3500, Number(req.query.max) || 3500));
   const filter = (q) => q.gte('rating', min).lte('rating', max);
   const { count, error: countError } = await filter(db.from('puzzles').select('puzzle_id', { count: 'exact', head: true }));
-  if (countError) return res.status(500).json({ error: 'Could not load puzzles.' });
+  if (countError) { console.error('/api/puzzles/random count query failed:', countError); return res.status(500).json({ error: 'Could not load puzzles.' }); }
   if (!count) return res.status(404).json({ error: 'No puzzles in this rating range. Import the Lichess CC0 puzzle database first.' });
   const offset = Math.floor(Math.random() * count);
   const { data, error } = await filter(db.from('puzzles').select('puzzle_id,fen,moves,rating,themes')).range(offset, offset);
-  if (error || !data?.length) return res.status(500).json({ error: 'Could not load a puzzle.' });
+  if (error || !data?.length) { if (error) console.error('/api/puzzles/random fetch failed:', error); return res.status(500).json({ error: 'Could not load a puzzle.' }); }
   res.json(data[0]);
 });
 
@@ -687,9 +707,10 @@ app.post('/api/tournaments', async (req, res) => {
     max_players: maxPlayers
   };
   const { data, error } = await db.from('tournaments').insert(tournament).select().single();
-  if (error) return res.status(500).json({ error: 'Could not create tournament.' });
+  if (error) { console.error('/api/tournaments insert failed:', error); return res.status(500).json({ error: 'Could not create tournament.' }); }
   const { error: joinError } = await db.from('tournament_players').insert({ tournament_id: data.id, player_id: acct.id });
   if (joinError) {
+    console.error('/api/tournaments host registration failed:', joinError);
     await db.from('tournaments').delete().eq('id', data.id);
     return res.status(500).json({ error: 'Could not register the host for this tournament.' });
   }
@@ -707,12 +728,13 @@ app.post('/api/tournaments/join', async (req, res) => {
   const { data: tournament, error } = await db.from('tournaments').select('*').eq('id', id).maybeSingle();
   if (error || !tournament) return res.status(404).json({ error: 'Tournament not found.' });
   if (tournament.status !== 'open') return res.status(409).json({ error: 'This tournament is no longer accepting players.' });
-  const { data: entrants } = await db.from('tournament_players').select('player_id').eq('tournament_id', id);
+  const { data: entrants, error: entrantsError } = await db.from('tournament_players').select('player_id').eq('tournament_id', id);
+  if (entrantsError) { console.error('/api/tournaments/join entrant lookup failed:', entrantsError); return res.status(500).json({ error: 'Could not check tournament entrants.' }); }
   const players = (entrants || []).map((p) => p.player_id);
   if (players.includes(acct.id)) return res.status(409).json({ error: 'You are already entered.' });
   if (players.length >= tournament.max_players) return res.status(409).json({ error: 'This tournament is full.' });
   const { error: joinError } = await db.from('tournament_players').insert({ tournament_id: id, player_id: acct.id });
-  if (joinError) return res.status(500).json({ error: 'Could not join tournament.' });
+  if (joinError) { console.error('/api/tournaments/join insert failed:', joinError); return res.status(500).json({ error: 'Could not join tournament.' }); }
   const state = tournaments.get(id);
   if (state && !state.players.includes(acct.id)) state.players.push(acct.id);
   const playerSocket = connectedSockets.get(acct.id);
@@ -859,7 +881,8 @@ app.post('/api/tournaments/start', async (req, res) => {
   if (error || !tournament) return res.status(404).json({ error: 'Tournament not found.' });
   if (tournament.creator_id !== acct.id) return res.status(403).json({ error: 'Only the tournament host can start it.' });
   if (tournament.status !== 'open') return res.status(409).json({ error: 'Tournament has already started.' });
-  const { data: entrants } = await db.from('tournament_players').select('player_id').eq('tournament_id', id);
+  const { data: entrants, error: entrantsError } = await db.from('tournament_players').select('player_id').eq('tournament_id', id);
+  if (entrantsError) { console.error('/api/tournaments/start entrant lookup failed:', entrantsError); return res.status(500).json({ error: 'Could not load tournament entrants.' }); }
   const players = (entrants || []).map((p) => p.player_id);
   if (players.length < 2) return res.status(400).json({ error: 'At least two players are needed.' });
   const offline = players.filter((pid) => !connectedSockets.has(pid) || !io.sockets.sockets.has(connectedSockets.get(pid)));

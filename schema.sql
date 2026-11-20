@@ -198,3 +198,18 @@ create index if not exists puzzles_rating_idx on public.puzzles(rating);
 alter table public.puzzles enable row level security;
 drop policy if exists "Puzzles are publicly readable" on public.puzzles;
 create policy "Puzzles are publicly readable" on public.puzzles for select using (true);
+
+-- Explicit API privileges. New Supabase projects may not automatically grant access
+-- to newly-created public tables. RLS policies do not replace PostgreSQL GRANTs.
+-- The Express backend uses SUPABASE_SERVICE_KEY, so grant it DML access to the
+-- application tables and sequences. Keep moderation/social/tournament writes server-only.
+grant usage on schema public to service_role;
+grant select, insert, update, delete on all tables in schema public to service_role;
+grant usage, select, update on all sequences in schema public to service_role;
+-- Future tables created by the role running this script inherit backend access too.
+alter default privileges in schema public grant select, insert, update, delete on tables to service_role;
+alter default privileges in schema public grant usage, select, update on sequences to service_role;
+
+-- These two datasets are explicitly public-read through their existing RLS policies.
+grant select on table public.puzzles to anon, authenticated;
+grant select on table public.games to anon, authenticated;
