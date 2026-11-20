@@ -9,4 +9,5 @@ engines/stockfish/
 engines/puzzles/
 engines/zstd/
 
+# Uploaded source archive / local backup
 pieces.zip

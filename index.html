@@ -72,10 +72,12 @@
   .drawbar span { font-weight: 700; margin-right: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .drawbar button { padding: 6px 10px; font-size: .9rem; }
 
-  .veil-card { text-align: center; padding: 20px 28px; max-width: 320px; }
+  .veil-card { text-align: center; padding: 20px 28px; max-width: 420px; }
   .veil-card h2 { margin: 0 0 4px; font-size: 1.7rem; letter-spacing: -.02em; }
   .veil-card p { margin: 0 0 16px; color: var(--light); }
   .veil-card .row { display: flex; gap: 8px; justify-content: center; }
+  .veil-actions { display:flex; justify-content:center; flex-wrap:wrap; gap:8px; }
+  .veil-actions button { min-width:128px; }
   .spin { width: 30px; height: 30px; margin: 0 auto 12px; border: 3px solid var(--line); border-top-color: var(--accent);
     border-radius: 50%; animation: spin 1s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -690,9 +692,14 @@ function veil(o) {
   if (o.spin) card.appendChild(Object.assign(document.createElement('div'), { className: 'spin' }));
   card.appendChild(Object.assign(document.createElement('h2'), { textContent: o.title }));
   if (o.sub) card.appendChild(Object.assign(document.createElement('p'), { textContent: o.sub }));
-  if (o.button) {
-    const b = Object.assign(document.createElement('button'), { textContent: o.button.label, className: o.button.primary ? 'primary' : '' });
-    b.onclick = o.button.onClick; card.appendChild(b);
+  const actions = o.buttons || (o.button ? [o.button] : []);
+  if (actions.length) {
+    const buttons = document.createElement('div'); buttons.className = 'veil-actions';
+    for (const action of actions) {
+      const b = Object.assign(document.createElement('button'), { textContent: action.label, className: action.primary ? 'primary' : '' });
+      b.onclick = action.onClick; buttons.appendChild(b);
+    }
+    card.appendChild(buttons);
   }
   v.appendChild(card); v.classList.remove('hidden');
 }
@@ -815,15 +822,19 @@ socket.on('over', (o) => {
   $('#status').textContent = '';
   $('#actions').classList.add('hidden'); $('#drawNote').textContent = '';
   hello(); render(); setTimeout(loadBoard, 1500);
+  const playAgain = { label: 'Play again', primary: !o.saved, onClick: () => {
+    game = null; selected = null; targets = [];
+    $('#gamePanel').classList.add('hidden'); $('#lobby').classList.remove('hidden');
+    $('#chatPanel').classList.add('hidden');
+    paintPlayers(); drawClocks(); render(); idleVeil();
+  } };
+  const resultActions = o.saved && o.stored && game?.id
+    ? [{ label: 'Analyse game', primary: true, onClick: () => { location.href = '/analysis.html?id=' + encodeURIComponent(game.id); } }, playAgain]
+    : [playAgain];
   veil({
     title: o.result === '1/2-1/2' ? 'Draw' : won ? 'You won' : 'You lost',
     sub: `By ${o.reason}. ${ratingSummary}.${o.saved === false ? (o.tournamentPaused ? ' Result is waiting to be saved; the tournament is paused.' : ' Result could not be saved to your account.') : ''}`,
-    button: { label: 'Play again', primary: true, onClick: () => {
-      game = null; selected = null; targets = [];
-      $('#gamePanel').classList.add('hidden'); $('#lobby').classList.remove('hidden');
-      $('#chatPanel').classList.add('hidden');
-      paintPlayers(); drawClocks(); render(); idleVeil();
-    } }
+    buttons: resultActions
   });
 });
 

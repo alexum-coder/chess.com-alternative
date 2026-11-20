@@ -58,7 +58,7 @@
       <div id="board" class="zz-board" aria-label="Chess board"></div>
       <button id="return-position" hidden type="button">Return to current position</button>
       <p id="status" class="status" role="status" aria-live="polite">Loading Stockfish…</p>
-      <div class="row"><button id="analyze">Analyze position</button><button id="review">Review game</button></div>
+      <div class="row"><button id="analyze" disabled title="Available when the game is complete">Analyze position</button><button id="review" disabled title="Available when the game is complete">Review completed game</button></div>
       <p class="hint">Engine runs locally in your browser. Stockfish's JavaScript and WebAssembly files are downloaded from Zugzwang's public Supabase Storage bucket.</p>
     </section>
     <aside class="panel">
@@ -66,11 +66,11 @@
       <div class="eval" id="eval">—</div>
       <p id="best" class="status">Choose a move or analyze the position.</p>
       <div id="moves" class="moves"></div>
-      <h3>Move-by-move analysis</h3>
-      <p class="hint">Each move is checked against Stockfish. Select a move to view the resulting position.</p>
+      <h3>Full game analysis</h3>
+      <p class="hint">Finish the game first, then select Review game to open the full board replay, move classifications, explanations and evaluation graph.</p>
       <div id="review-summary" class="review-summary" hidden></div>
       <div id="annotations" class="review-list" aria-live="polite">
-        <p class="review-placeholder">Finish a few moves, then select Review game.</p>
+        <p class="review-placeholder">Review unlocks after checkmate or a draw. The completed game opens in the full analysis view.</p>
       </div>
     </aside>
   </main>
@@ -125,7 +125,8 @@
       if (line === 'uciok') worker.postMessage('isready');
       if (line === 'readyok') {
         ready = true;
-        $('status').textContent = 'Stockfish ready · White to move';
+        $('status').textContent = chess.isGameOver() ? 'Game complete · review is available' : 'Stockfish ready · White to move';
+        updateReviewAvailability();
         if (queuedSearch) {
           const request = queuedSearch; queuedSearch = null;
           if (startSearch(request)) $('status').textContent = request.bot ? 'Your move has been sent to Stockfish…' : 'Analyzing position…';
@@ -142,7 +143,7 @@
         busy = false; bestMove = best[1];
         const shouldPlay = pendingBotMove; pendingBotMove = false;
         if (shouldPlay && chess.turn() === 'b' && !chess.isGameOver()) makeBotMove(bestMove);
-        else $('best').textContent = 'Best move: ' + bestMove;
+        else { $('best').textContent = 'Best move: ' + bestMove; updateReviewAvailability(); }
       }
     }
     function askEngine(fen, depth, bot = false) {
@@ -160,6 +161,14 @@
       if (busy) return;
       if (!startSearch(request)) $('status').textContent = 'Stockfish is not ready yet.';
     }
+    function updateReviewAvailability() {
+      const complete = chess.isGameOver();
+      $('analyze').disabled = !complete || !ready || busy || reviewRunning;
+      $('review').disabled = !complete;
+      $('analyze').title = complete ? 'Analyse the final position' : 'Available only after the game is complete';
+      $('review').title = complete ? 'Open the full game analysis' : 'Available only after the game is complete';
+      $('review').textContent = complete ? 'Review game' : 'Review after game';
+    }
     function render() {
       const view = reviewPreview ? new Chess(reviewPreview.fen) : chess;
       const viewLastMove = reviewPreview ? reviewPreview.lastMove : lastMove;
@@ -175,8 +184,9 @@
       if (reviewPreview) {
         $('status').textContent = `Reviewing ${reviewPreview.label} · ${view.turn() === 'w' ? 'White' : 'Black'} to move`;
       } else {
-        $('status').textContent = chess.isGameOver() ? (chess.isCheckmate() ? 'Checkmate' : chess.isDraw() ? 'Draw' : 'Game over') : (chess.turn() === 'w' ? 'Your move' : 'Stockfish to move');
+        $('status').textContent = chess.isGameOver() ? (chess.isCheckmate() ? 'Checkmate' : chess.isDraw() ? 'Draw' : 'Game over') : (chess.turn() === 'w' ? 'Your move · analysis unlocks when the game is complete' : 'Stockfish to move');
       }
+      updateReviewAvailability();
     }
     function click(square) {
       if (reviewPreview || reviewRunning || chess.isGameOver() || chess.turn() !== 'w' || busy) return;
@@ -469,78 +479,24 @@
       render();
     });
     $('analyze').addEventListener('click', () => {
+      if (!chess.isGameOver()) return;
       reviewPreview = null;
       askEngine(chess.fen(), Number($('depth').value));
     });
-    $('review').addEventListener('click', async () => {
-      if (!ready || busy || reviewRunning) return;
-      const history = chess.history({ verbose:true });
-      if (!history.length) {
-        $('annotations').innerHTML = '<p class="review-placeholder">Play a few moves first.</p>';
-        return;
-      }
-      const copy = new Chess(), rows = [], positions = [copy.fen()];
-      for (let i = 0; i < history.length; i++) {
-        const move = history[i];
-        copy.move({ from:move.from, to:move.to, ...(move.promotion ? { promotion:move.promotion } : {}) });
-        rows.push({
-          ply:i + 1, moveNumber:Math.ceil((i + 1) / 2), san:move.san,
-          before:positions[i], after:copy.fen(), move, color:move.color,
-          uci:move.from + move.to + (move.promotion || ''), checkmate:copy.isCheckmate(),
-          draw:copy.isDraw() && !copy.isCheckmate()
-        });
-        positions.push(copy.fen());
-      }
-
-      reviewRunning = true;
-      setReviewControls(true);
-      reviewPreview = null;
-      $('review-summary').hidden = true;
-      $('annotations').replaceChildren();
-      const depth = Math.max(10, Math.min(14, Number($('depth').value) || 12));
-      const analyses = [];
-      const finalRow = rows[rows.length - 1];
-      const finalPositionIsTerminal = copy.isGameOver();
+    $('review').addEventListener('click', () => {
+      if (!chess.isGameOver()) return;
+      const result = chess.isCheckmate() ? (chess.turn() === 'w' ? '0-1' : '1-0') : '1/2-1/2';
+      const payload = {
+        id:'computer-' + Date.now(), source:'computer',
+        white_name:'You', black_name:'Stockfish', result,
+        reason:chess.isCheckmate() ? 'checkmate' : 'draw',
+        pgn:chess.pgn(), base:0, inc:0, created_at:new Date().toISOString()
+      };
       try {
-        for (let i = 0; i < positions.length; i++) {
-          $('annotations').textContent = `Analysing position ${i + 1} of ${positions.length} with Stockfish (depth ${depth})…`;
-          // A terminal position has no legal best move; its result is already known.
-          if (i === positions.length - 1 && finalPositionIsTerminal) {
-            analyses.push({
-              whiteScore:finalRow.checkmate ? (finalRow.color === 'w' ? 50 : -50) : 0,
-              bestMove:'0000', score:null, pv:[], depth:0
-            });
-            continue;
-          }
-          const analysis = await evaluateFen(positions[i], depth);
-          if (!analysis) throw new Error(`Stockfish did not return an evaluation for position ${i + 1}.`);
-          analyses.push(analysis);
-        }
-        for (const row of rows) {
-          const before = analyses[row.ply - 1], after = analyses[row.ply];
-          const rawLoss = row.color === 'w'
-            ? before.whiteScore - after.whiteScore
-            : after.whiteScore - before.whiteScore;
-          const loss = Math.max(0, rawLoss);
-          const bestSan = uciToSan(row.before, before.bestMove);
-          const replySan = uciToSan(row.after, after.bestMove);
-          const label = classifyMove(row, before, after, loss, bestSan);
-          row.loss = loss;
-          row.label = label;
-          row.bestSan = bestSan;
-          row.replySan = replySan;
-          row.explanation = moveExplanation(label, loss, bestSan, replySan, row);
-        }
-        reviewedRows = rows;
-        renderReviewRows(rows);
-        $('best').textContent = `Review complete · Stockfish depth ${depth}`;
+        sessionStorage.setItem('zz:computer-game-analysis', JSON.stringify(payload));
+        location.href = '/analysis.html?source=computer';
       } catch (error) {
-        $('annotations').textContent = error.message || 'The game review could not be completed.';
-        $('best').textContent = 'Review incomplete';
-      } finally {
-        reviewRunning = false;
-        setReviewControls(false);
-        render();
+        $('status').textContent = 'Could not open the review: browser storage is unavailable. ' + (error.message || '');
       }
     });
     render(); initEngine();

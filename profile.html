@@ -38,6 +38,10 @@
   .dot { display:inline-block; width:.7em; height:.7em; border-radius:50%; margin-right:6px; border:1px solid #fff; }
   .dot.w { background:#fff; } .dot.b { background:#10151c; }
   .empty { color:var(--muted); margin:8px 0 0; }
+  .game-actions { display:flex; align-items:center; gap:6px; }
+  .game-actions a { display:inline-block; border:1px solid var(--line); border-radius:6px; padding:6px 9px; color:var(--ink); text-decoration:none; font-size:.82rem; font-weight:700; }
+  .game-actions a.primary { background:var(--accent); border-color:var(--accent); color:#172014; }
+  .game-actions button { padding:6px 9px; font-size:.82rem; }
   .hidden { display:none !important; }
 </style>
 </head>
@@ -65,10 +69,10 @@
   </section>
 
   <section class="panel">
-    <h2>Recent games</h2>
+    <h2>Game history</h2>
     <div class="scroll">
       <table id="games" class="hidden">
-        <thead><tr><th>Result</th><th>Opponent</th><th>Time</th><th>Ended by</th><th>Date</th><th></th></tr></thead>
+        <thead><tr><th>Result</th><th>Opponent</th><th>Time</th><th>Ended by</th><th>Date</th><th>Actions</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
@@ -125,10 +129,24 @@
     $('#saveName').disabled = false;
   });
 
-  const { data: rows } = await ZZ.sb.from('games')
-    .select('id,white,black,white_name,black_name,result,reason,pgn,base,inc,created_at')
-    .or(`white.eq.${uid},black.eq.${uid}`).order('created_at', { ascending: false }).limit(100);
-  const games = rows || [];
+  const games = [];
+  try {
+    // Fetch in pages so the profile's Analyse action is available for the full game history.
+    for (let offset = 0; ; offset += 100) {
+      const { data, error } = await ZZ.sb.from('games')
+        .select('id,white,black,white_name,black_name,result,reason,pgn,base,inc,created_at')
+        .or(`white.eq.${uid},black.eq.${uid}`).order('created_at', { ascending: false })
+        .range(offset, offset + 99);
+      if (error) throw error;
+      const batch = data || [];
+      games.push(...batch);
+      if (batch.length < 100) break;
+    }
+  } catch (error) {
+    console.error('Could not load complete game history:', error.message || error);
+    $('#noGames').textContent = 'Could not load your game history. Please refresh the page.';
+    $('#noGames').classList.remove('hidden');
+  }
   let w = 0, d = 0, l = 0;
   const tbody = $('#games tbody');
   const cell = (tr, text) => { const td = document.createElement('td'); td.textContent = text; tr.appendChild(td); return td; };
@@ -137,7 +155,6 @@
     const mine = g.white === uid ? 'w' : 'b';
     const out = g.result === '1/2-1/2' ? 'D' : (g.result === '1-0') === (mine === 'w') ? 'W' : 'L';
     if (out === 'W') w++; else if (out === 'L') l++; else d++;
-    if (i >= 20) return;
     const tr = document.createElement('tr');
     const t1 = document.createElement('td');
     const badge = document.createElement('span'); badge.className = 'badge ' + out; badge.textContent = out;
@@ -149,14 +166,16 @@
     cell(tr, g.reason);
     cell(tr, new Date(g.created_at).toLocaleDateString());
     const t6 = document.createElement('td');
+    const actions = document.createElement('div'); actions.className = 'game-actions';
+    const analyse = document.createElement('a'); analyse.className = 'primary';
+    analyse.href = '/analysis.html?id=' + encodeURIComponent(g.id); analyse.textContent = 'Analyse';
     const copy = document.createElement('button'); copy.textContent = 'Copy PGN';
     copy.onclick = async () => { try { await navigator.clipboard.writeText(g.pgn); copy.textContent = 'Copied'; setTimeout(() => (copy.textContent = 'Copy PGN'), 1500); } catch { copy.textContent = 'Failed'; } };
-    t6.appendChild(copy); tr.appendChild(t6);
+    actions.append(analyse, copy); t6.appendChild(actions); tr.appendChild(t6);
     tbody.appendChild(tr);
   });
   $('#sGames').textContent = games.length; $('#sWins').textContent = w; $('#sDraws').textContent = d; $('#sLosses').textContent = l;
   if (games.length) $('#games').classList.remove('hidden'); else $('#noGames').classList.remove('hidden');
-  if (games.length === 100) $('#sGames').textContent = '100+';
 })();
 </script>
 </body>

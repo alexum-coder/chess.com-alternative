@@ -50,6 +50,7 @@ All pages use the same responsive navigation injected by `nav.js`. Online matche
 - Live in-game chat, friend requests and single-elimination tournaments.
 - Tournament brackets, byes, drawn-match replays and server-restart recovery.
 - Reports, moderator review, warnings, mutes, bans and Stockfish-based review flags.
+- Completed-game analysis for every saved profile game, with a replayable board, move classifications, engine continuations and an evaluation graph. Live games cannot be analysed; the review endpoint only returns finalized game records.
 
 ## Tests
 
@@ -76,7 +77,7 @@ The web page creates `/stockfish-worker.js` on the Zugzwang origin. That bootstr
 
 No browser engine computation is sent to the server. Server-side anti-cheat analysis uses a separate native Stockfish executable. You can keep it at `STOCKFISH_PATH`, or upload a **Linux ELF** executable to a private bucket: run `npm run upload:stockfish-native -- ./path/to/linux/stockfish`. The script gzip-compresses it and splits the gzip byte stream into Storage objects no larger than `STOCKFISH_NATIVE_PART_SIZE_MB` (45 MiB by default, below Supabase Free's 50 MB per-file cap). It uploads objects such as `stockfish-linux-x64.gz.part-001` and `.part-002`. After the script prints `STOCKFISH_NATIVE_OBJECTS`, set that comma-separated value and `STOCKFISH_NATIVE_BUCKET=stockfish-native` in Render only (leave these unset in local Windows `.env` files). At startup the server downloads each private object in order, reconstructs the original gzip stream, decompresses the executable into its temporary directory, sets executable permissions, and validates its UCI handshake. The prior single-object `STOCKFISH_NATIVE_OBJECT` variable remains supported for backwards compatibility. Never use the Windows `.exe` on Render, which runs Linux, and never make the native-engine bucket public.
 
-Supabase Free projects currently have a 50 MB maximum per uploaded file. The native uploader uses 45 MiB parts by default to leave room below that per-object cap. Pro and higher plans can configure larger limits if desired. (See [Supabase upload limits](https://supabase.com/docs/guides/storage/uploads/file-limits).) Stockfish.js is GPL-3.0; retain its license and source notices with distributions that include it. The page provides local play, position analysis and move-by-move review with !! Brilliant, ! Great, ★ Excellent, ?! Inaccuracy, ? Mistake and ?? Blunder labels. The labels are heuristic centipawn-loss bands, not official Chess.com classifications.
+Supabase Free projects currently have a 50 MB maximum per uploaded file. The native uploader uses 45 MiB parts by default to leave room below that per-object cap. Pro and higher plans can configure larger limits if desired. (See [Supabase upload limits](https://supabase.com/docs/guides/storage/uploads/file-limits).) Stockfish.js is GPL-3.0; retain its license and source notices with distributions that include it. The page provides local play and unlocks position analysis and move-by-move review only after the computer game is complete. The dedicated `/analysis.html?id=GAME_ID` page reviews saved online games with a replayable board, move classifications, engine continuations and an evaluation graph. The labels are heuristic centipawn-loss bands and conservative sacrifice checks, not official Chess.com classifications.
 
 ## Puzzles (Lichess CC0)
 
@@ -103,11 +104,5 @@ After the migration succeeds, redeploy/restart the Render service so the server 
 Open `/api/health` on the deployed site to verify that both browser Stockfish files are reachable from Supabase Storage. The response should show `browserStockfish.source: "supabase-storage"` and `browserStockfish.js: true`, `browserStockfish.wasm: true`.
 
 The computer page queues a move made while Stockfish is still downloading/initializing, instead of silently dropping the engine request. It also displays worker/Storage/WASM startup errors on the page. The uploaded pair must be `stockfish-19-lite-single.js` and its matching `stockfish-19-lite-single.wasm` from the same `stockfish@19.0.1` package version.
-#   c h e s s . c o m - a l t e r n a t i v e  
- #   c h e s s . c o m - a l t e r n a t i v e  
- #   c h e s s . c o m - a l t e r n a t i v e  
- #   c h e s s . c o m - a l t e r n a t i v e  
- #   c h e s s . c o m - a l t e r n a t i v e  
- #   c h e s s . c o m - a l t e r n a t i v e  
- #   c h e s s . c o m - a l t e r n a t i v e  
+##   c h e s s . c o m - a l t e r n a t i v e  
  

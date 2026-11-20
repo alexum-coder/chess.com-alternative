@@ -39,6 +39,25 @@ app.get('/api/leaderboard', async (req, res) => {
   res.json(data || []);
 });
 
+// Only finalized rows are stored in `games`, so this endpoint cannot expose a live match.
+app.get('/api/games/:id', async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Game history is unavailable because Supabase is not configured.' });
+  const id = String(req.params.id || '').trim();
+  if (!/^[a-zA-Z0-9_-]{1,80}$/.test(id)) return res.status(400).json({ error: 'Invalid game ID.' });
+  const { data, error } = await db.from('games')
+    .select('id,white_name,black_name,result,reason,pgn,base,inc,created_at')
+    .eq('id', id).maybeSingle();
+  if (error) {
+    console.error('Completed game lookup failed:', error.message);
+    return res.status(500).json({ error: 'Could not load this game.' });
+  }
+  if (!data || !['1-0', '0-1', '1/2-1/2'].includes(data.result)) {
+    return res.status(404).json({ error: 'This completed game could not be found.' });
+  }
+  res.set('Cache-Control', 'public, max-age=60');
+  res.json({ game: data });
+});
+
 // Loads (or creates) the profile for a Supabase session token and caches it.
 async function accountFor(token) {
   const { data, error } = await db.auth.getUser(token);
@@ -601,7 +620,7 @@ async function endGame(g, result, reason) {
   }));
   if (committed && newlyCommitted) reviewFinishedGame(g, engineMoves);
   io.to(g.id).emit('over', {
-    result, reason, saved: committed, tournamentPaused: !committed && !!g.tournamentMatch,
+    result, reason, saved: committed, stored: committed && !!db, tournamentPaused: !committed && !!g.tournamentMatch,
     ratings: {
       w: wPublic.rating, b: bPublic.rating, dw, db: dbRating,
       wGames: w.games || 0, bGames: b.games || 0,

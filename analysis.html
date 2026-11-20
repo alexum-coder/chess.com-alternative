@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Game analysis · Zugzwang</title>
+  <link rel="stylesheet" href="/theme.css">
+  <link rel="stylesheet" href="/board.css">
+  <style>
+    :root { color-scheme:dark; --bg:#242321; --panel:#302f2d; --panel2:#282725; --ink:#f3f1ec; --muted:#aaa7a0; --line:#45433f; --light:#f0d9b5; --dark:#b58863; --accent:#81b64c; --last:rgba(157,190,73,.55); }
+    body { background:#242321; color:var(--ink); }
+    .analysis-shell { width:min(1540px,100%); margin:20px auto 42px; padding:0 18px; }
+    .hint { color:var(--muted); font-size:.76rem; }
+    .analysis-top { display:flex; align-items:center; justify-content:space-between; gap:14px; margin-bottom:15px; }
+    .analysis-top h1 { margin:0; font-size:1.35rem; letter-spacing:-.025em; }
+    .analysis-top p { margin:3px 0 0; color:var(--muted); font-size:.86rem; }
+    .top-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .analysis-layout { display:grid; grid-template-columns:minmax(0, min(59vw, 850px)) minmax(360px, 1fr); gap:18px; align-items:start; }
+    .board-side { min-width:0; }
+    .player-strip { display:flex; justify-content:space-between; gap:12px; align-items:center; background:#302f2d; border:1px solid #403e3a; border-radius:9px 9px 0 0; padding:10px 14px; }
+    .player { display:flex; align-items:center; gap:10px; min-width:0; }
+    .player-piece { display:grid; place-items:center; width:36px; height:36px; flex:0 0 36px; border-radius:5px; font-size:25px; background:#e8e7e2; color:#282725; }
+    .player.black .player-piece { background:#55534f; color:#f5f4f0; }
+    .player strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.95rem; }
+    .player small { display:block; color:var(--muted); font-size:.75rem; }
+    .game-result { border-radius:6px; background:#45433f; padding:6px 10px; font-weight:800; white-space:nowrap; }
+    .board-frame { display:grid; grid-template-columns:19px minmax(0,1fr); gap:9px; align-items:stretch; padding:0 0 0 0; }
+    .eval-bar { position:relative; overflow:hidden; border-radius:4px; background:#171716; min-height:200px; box-shadow:inset 0 0 0 1px rgba(255,255,255,.12); }
+    .eval-fill { position:absolute; left:0; right:0; bottom:0; height:50%; background:#f5f4ef; transition:height .25s ease; }
+    .eval-value { position:absolute; z-index:1; left:0; right:0; bottom:5px; color:#282725; text-align:center; font-size:.58rem; font-weight:900; text-shadow:0 1px 1px rgba(255,255,255,.6); }
+    #board { width:100%; border-radius:0; box-shadow:none; }
+    .zz-board .sq.l { background:#f0d9b5; }
+    .zz-board .sq.d { background:#b58863; }
+    .zz-board .sq i.r,.zz-board .sq i.f { text-shadow:0 1px 1px rgba(0,0,0,.12); }
+    .board-meta { display:flex; justify-content:space-between; gap:10px; align-items:center; color:var(--muted); font-size:.78rem; padding:8px 2px; }
+    .board-controls { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:7px; margin-top:8px; }
+    button, select, .action-link { border:1px solid #484641; border-radius:7px; background:#393835; color:#f5f3ef; padding:9px 11px; font:700 .88rem Manrope,system-ui,sans-serif; cursor:pointer; text-decoration:none; text-align:center; }
+    button:hover:not(:disabled), .action-link:hover { background:#484641; }
+    button:disabled { opacity:.4; cursor:not-allowed; }
+    button.primary { background:#81b64c; color:#172014; border-color:#81b64c; }
+    button.primary:hover:not(:disabled) { background:#93c45e; }
+    .board-controls button { font-size:1.1rem; padding:9px 6px; }
+    .board-controls .play { background:#81b64c; color:#172014; border-color:#81b64c; }
+    .right-panel { min-width:0; border:1px solid #403e3a; border-radius:9px; background:#2b2a28; overflow:hidden; }
+    .panel-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:14px 16px; background:#242321; border-bottom:1px solid #403e3a; }
+    .panel-head h2 { margin:0; font-size:1.05rem; }
+    .panel-head .eyebrow { color:#a8c78b; font-size:.72rem; font-weight:900; letter-spacing:.08em; text-transform:uppercase; }
+    .engine-row { display:flex; align-items:center; gap:8px; padding:12px 14px; border-bottom:1px solid #403e3a; }
+    .engine-row select { flex:1; min-width:0; }
+    .engine-state { color:var(--muted); font-size:.78rem; padding:0 14px 9px; }
+    .engine-insight { margin:12px 14px; padding:13px 14px; border-radius:9px; background:#f4f3ef; color:#22211f; display:grid; grid-template-columns:34px 1fr; gap:10px; }
+    .engine-insight .mascot { display:grid; place-items:center; width:34px; height:34px; border-radius:50%; background:#e1ead9; font-size:21px; }
+    .engine-insight strong { display:block; font-size:.9rem; margin-bottom:3px; }
+    .engine-insight p { margin:0; font-size:.82rem; line-height:1.45; }
+    .engine-insight .score { display:inline-block; margin-top:6px; color:#55534f; font-size:.75rem; font-weight:800; }
+    .move-detail { margin:0 14px 12px; padding:12px 13px; border:1px solid #484641; border-radius:8px; background:#32312e; min-height:104px; }
+    .move-detail-head { display:flex; align-items:center; gap:8px; margin-bottom:7px; }
+    .move-detail-head strong { font-size:.95rem; }
+    .move-detail p { margin:5px 0 0; font-size:.83rem; line-height:1.45; color:#e1dfd9; }
+    .move-detail .muted { color:var(--muted); font-size:.76rem; }
+    .review-icon { display:inline-grid; place-items:center; width:24px; height:24px; flex:0 0 24px; border-radius:50%; font-size:.77rem; font-weight:900; background:#e9eee8; color:#60745c; }
+    .mark-brilliant .review-icon { background:#dff5fb; color:#087e9c; }
+    .mark-best .review-icon,.mark-great .review-icon { background:#e3f2df; color:#28743a; }
+    .mark-excellent .review-icon { background:#e7f0e3; color:#477b3e; }
+    .mark-inaccuracy .review-icon { background:#fff2d9; color:#9a6500; }
+    .mark-mistake .review-icon { background:#ffe8d8; color:#b45a18; }
+    .mark-blunder .review-icon,.mark-missed-win .review-icon { background:#fbe1e1; color:#b3261e; }
+    .mark-checkmate .review-icon { background:#e8e1f8; color:#6841a5; }
+    .moves-area { padding:0 14px 12px; }
+    .moves-title { display:flex; justify-content:space-between; align-items:center; gap:8px; margin:0 0 8px; }
+    .moves-title h3 { margin:0; font-size:.89rem; }
+    .moves-grid { display:grid; gap:3px; max-height:270px; overflow:auto; padding-right:4px; }
+    .move-row { display:grid; grid-template-columns:34px minmax(0,1fr) minmax(0,1fr); align-items:center; gap:5px; }
+    .move-number { color:#929089; font-size:.74rem; text-align:right; padding-right:3px; }
+    .move-cell { display:flex; align-items:center; gap:5px; min-width:0; padding:6px 7px; border:1px solid transparent; border-radius:5px; background:transparent; font-size:.8rem; font-weight:800; text-align:left; }
+    .move-cell.selected { background:#4b4a45; border-color:#77746b; }
+    .move-cell .notation { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .move-cell .mini-mark { flex:0 0 15px; font-size:.7rem; text-align:center; }
+    .move-cell.mark-inaccuracy,.move-cell.mark-mistake { color:#ffc16e; }
+    .move-cell.mark-blunder,.move-cell.mark-missed-win { color:#ff817c; }
+    .move-cell.mark-brilliant { color:#68d5e6; }
+    .evaluation-section { padding:11px 14px 13px; border-top:1px solid #403e3a; background:#252422; }
+    .evaluation-head { display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:.78rem; color:var(--muted); margin-bottom:8px; }
+    #evalGraph { width:100%; height:96px; display:block; border-radius:5px; background:#3a3936; cursor:crosshair; }
+    .summary { display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
+    .summary-pill { padding:4px 7px; background:#3a3936; border:1px solid #504e49; border-radius:5px; color:#ddd9d1; font-size:.69rem; font-weight:800; }
+    .page-error { padding:28px; color:#ffaaa5; }
+    .loading { color:var(--muted); padding:24px 0; }
+    @media(max-width:900px) { .analysis-layout { grid-template-columns:minmax(0,1fr); } .board-side { max-width:760px; margin:0 auto; width:100%; } .right-panel { width:100%; } }
+    @media(max-width:520px) { .analysis-shell { padding:0 9px; margin-top:12px; } .analysis-top { align-items:flex-start; flex-direction:column; } .player-strip { padding:8px; } .player strong { max-width:112px; font-size:.8rem; } .player-piece { width:30px; height:30px; flex-basis:30px; font-size:21px; } .game-result { font-size:.75rem; padding:5px 7px; } .board-frame { grid-template-columns:15px minmax(0,1fr); gap:5px; } .engine-row { flex-wrap:wrap; } .engine-row select { flex-basis:100%; } }
+  </style>
+</head>
+<body>
+  <main class="analysis-shell">
+    <div class="analysis-top">
+      <div><h1>Game analysis</h1><p id="gameMeta">Loading completed game…</p></div>
+      <div class="top-actions"><a class="action-link" id="backLink" href="/profile.html">Back to profile</a></div>
+    </div>
+    <div id="loading" class="loading">Loading saved game…</div>
+    <div id="analysisApp" class="analysis-layout" hidden>
+      <section class="board-side">
+        <div class="player-strip">
+          <div class="player black"><span class="player-piece">♟</span><div><strong id="blackName">Black</strong><small>Black</small></div></div>
+          <span class="game-result" id="resultBadge">—</span>
+        </div>
+        <div class="board-frame">
+          <div class="eval-bar" id="evalBar"><div class="eval-fill" id="evalFill"></div><span class="eval-value" id="evalValue">0.0</span></div>
+          <div id="board" class="zz-board"></div>
+        </div>
+        <div class="player-strip" style="border-radius:0 0 9px 9px">
+          <div class="player"><span class="player-piece">♙</span><div><strong id="whiteName">White</strong><small>White</small></div></div>
+          <span class="game-result" id="timeControl">—</span>
+        </div>
+        <div class="board-meta"><span id="positionLabel">Starting position</span><span id="turnLabel">White to move</span></div>
+        <div class="board-controls">
+          <button id="firstMove" aria-label="Go to start" title="Go to start">|◀</button>
+          <button id="prevMove" aria-label="Previous move" title="Previous move">‹</button>
+          <button id="playMoves" class="play" aria-label="Auto play moves" title="Auto play">▶</button>
+          <button id="nextMove" aria-label="Next move" title="Next move">›</button>
+          <button id="lastMove" aria-label="Go to end" title="Go to end">▶|</button>
+        </div>
+        <div class="top-actions" style="margin-top:9px"><button id="flipBoard">Flip board</button><span class="hint" id="boardHint">Select a move to jump to that position.</span></div>
+      </section>
+
+      <aside class="right-panel">
+        <div class="panel-head"><div><div class="eyebrow">Completed game</div><h2>Game review</h2></div><span id="resultText" class="game-result">—</span></div>
+        <div class="engine-row">
+          <label for="depth">Stockfish depth</label>
+          <select id="depth"><option value="10">10 · Fast</option><option value="12" selected>12 · Balanced</option><option value="14">14 · Detailed</option><option value="16">16 · Deep</option></select>
+          <button id="runReview" class="primary" disabled>Start analysis</button>
+        </div>
+        <div class="engine-state" id="engineState">Connecting to Stockfish…</div>
+        <div class="engine-insight" id="engineInsight">
+          <span class="mascot">♟</span>
+          <div><strong>Ready to review</strong><p>Run Stockfish to see move classifications, explanations and the evaluation graph.</p></div>
+        </div>
+        <section class="move-detail" id="moveDetail" aria-live="polite">
+          <div class="move-detail-head"><span class="review-icon">·</span><strong>Game moves</strong></div>
+          <p>After analysis, select any move to see why the engine liked it or found a better option.</p>
+        </section>
+        <div class="moves-area">
+          <div class="moves-title"><h3>Move list</h3><span id="moveCount" class="hint">Not analysed</span></div>
+          <div id="movesGrid" class="moves-grid"><p class="hint">Moves will appear here.</p></div>
+          <div id="summary" class="summary" hidden></div>
+        </div>
+        <div class="evaluation-section">
+          <div class="evaluation-head"><strong>Evaluation over the game</strong><span id="graphHint">White advantage ↑ · Black advantage ↓</span></div>
+          <svg id="evalGraph" viewBox="0 0 640 110" preserveAspectRatio="none" role="img" aria-label="Evaluation graph"></svg>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
+  <script src="/config.js"></script>
+  <script src="/nav.js"></script>
+  <script type="module">
+    import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.0.0/+esm';
+    import { ZugzwangBoard } from '/board.js';
+    const $ = (id) => document.getElementById(id);
+    const params = new URLSearchParams(location.search);
+    const gameId = params.get('id');
+    const STANDARD_FEN = new Chess().fen();
+    let record = null, worker = null, ready = false, busy = false, failed = false, running = false;
+    let rows = [], positions = [], evaluations = [], selectedPly = 0, flipped = false, playTimer = null;
+    const board = new ZugzwangBoard($('board'));
+
+    function setEngineState(text) { $('engineState').textContent = text; }
+    function updateControls() {
+      $('runReview').disabled = !record || !ready || running || failed || busy;
+      $('depth').disabled = running || busy;
+      $('firstMove').disabled = !positions.length || selectedPly === 0;
+      $('prevMove').disabled = !positions.length || selectedPly === 0;
+      $('nextMove').disabled = !positions.length || selectedPly >= rows.length;
+      $('lastMove').disabled = !positions.length || selectedPly >= rows.length;
+    }
+    function initEngine() {
+      try {
+        worker = new Worker('/stockfish-worker.js');
+        worker.onmessage = (event) => {
+          const line = String(event.data);
+          if (line.startsWith('stockfish-bootstrap-error:')) {
+            failed = true; ready = false;
+            setEngineState('Stockfish could not load: ' + line.slice('stockfish-bootstrap-error:'.length).trim());
+            updateControls(); return;
+          }
+          if (line === 'uciok') worker.postMessage('isready');
+          if (line === 'readyok') {
+            ready = true;
+            setEngineState('Stockfish ready · browser-based analysis');
+            updateControls();
+          }
+        };
+        worker.onerror = (event) => {
+          failed = true; ready = false;
+          setEngineState('Stockfish failed to load' + (event.message ? ': ' + event.message : '.'));
+          updateControls();
+        };
+        worker.postMessage('uci');
+      } catch (error) {
+        failed = true;
+        setEngineState('Could not start Stockfish: ' + error.message);
+        updateControls();
+      }
+    }
+    function scoreToWhitePawns(score, fen) {
+      if (!score) return null;
+      let value = score.type === 'mate'
+        ? Math.sign(score.value || 1) * (50 - Math.min(50, Math.abs(score.value)) * 0.01)
+        : score.value / 100;
+      return fen.split(' ')[1] === 'w' ? value : -value;
+    }
+    function evaluateFen(fen, depth) {
+      return new Promise((resolve, reject) => {
+        if (!worker || !ready || busy) return reject(new Error('Stockfish is busy or not ready.'));
+        let bestScore = null, bestDepth = -1, pv = [], settled = false;
+        const timeout = setTimeout(() => {
+          try { worker.postMessage('stop'); } catch {}
+          finishError(new Error('Stockfish took too long on this position. Try a lower depth.'));
+        }, 90000);
+        const cleanup = () => {
+          clearTimeout(timeout);
+          worker.removeEventListener('message', onMessage);
+          worker.removeEventListener('error', onError);
+          busy = false; updateControls();
+        };
+        const finish = (value) => { if (settled) return; settled = true; cleanup(); resolve(value); };
+        const finishError = (error) => { if (settled) return; settled = true; cleanup(); reject(error); };
+        const onError = (event) => finishError(new Error(event.message || 'Stockfish worker error.'));
+        const onMessage = (event) => {
+          const text = String(event.data);
+          if (text.startsWith('info ')) {
+            const scoreMatch = text.match(/\bscore\s+(cp|mate)\s+(-?\d+)/);
+            const depthMatch = text.match(/\bdepth\s+(\d+)/);
+            const currentDepth = depthMatch ? Number(depthMatch[1]) : 0;
+            if (scoreMatch && currentDepth >= bestDepth) {
+              bestDepth = currentDepth;
+              bestScore = { type:scoreMatch[1], value:Number(scoreMatch[2]), depth:currentDepth };
+              const pvMatch = text.match(/\bpv\s+(.+)$/);
+              pv = pvMatch ? pvMatch[1].trim().split(/\s+/) : [];
+            }
+          }
+          const bestMatch = text.match(/^bestmove\s+(\S+)/);
+          if (bestMatch) {
+            if (!bestScore) return finish(null);
+            finish({ whiteScore:scoreToWhitePawns(bestScore, fen), score:bestScore, bestMove:bestMatch[1], pv, depth:bestDepth });
+          }
+        };
+        busy = true; updateControls();
+        worker.addEventListener('message', onMessage);
+        worker.addEventListener('error', onError);
+        try {
+          worker.postMessage('position fen ' + fen);
+          worker.postMessage('go depth ' + depth);
+        } catch (error) { finishError(error); }
+      });
+    }
+    function uciToSan(fen, uci) {
+      if (!uci || uci === '0000') return null;
+      try {
+        const position = new Chess(fen);
+        const move = position.move({ from:uci.slice(0,2), to:uci.slice(2,4), ...(uci[4] ? { promotion:uci[4] } : {}) });
+        return move?.san || null;
+      } catch { return null; }
+    }
+    function uciLineToSan(fen, line) {
+      if (!Array.isArray(line) || !line.length) return '';
+      try {
+        const position = new Chess(fen), san = [];
+        for (const uci of line.slice(0, 7)) {
+          if (!uci || uci === '0000') break;
+          const move = position.move({ from:uci.slice(0,2), to:uci.slice(2,4), ...(uci[4] ? { promotion:uci[4] } : {}) });
+          if (!move) break;
+          san.push(move.san);
+        }
+        return san.join(' ');
+      } catch { return ''; }
+    }
+    function isSoundMaterialSacrifice(row) {
+      if (!['n','b','r','q'].includes(row.move.piece)) return false;
+      try {
+        const afterMove = new Chess(row.after);
+        const captures = afterMove.moves({ verbose:true }).filter((candidate) => candidate.to === row.move.to && candidate.captured);
+        for (const capture of captures) {
+          const afterCapture = new Chess(row.after);
+          afterCapture.move({ from:capture.from, to:capture.to, ...(capture.promotion ? { promotion:capture.promotion } : {}) });
+          const canRecapture = afterCapture.moves({ verbose:true }).some((reply) => reply.to === row.move.to && reply.captured);
+          if (!canRecapture) return true;
+        }
+      } catch { /* Conservative when the sacrifice cannot be verified. */ }
+      return false;
+    }
+    function classifyMove(row, before, after, loss) {
+      if (row.checkmate) return { key:'checkmate', icon:'♔', name:'Checkmate' };
+      const bestMatch = before.bestMove === row.uci;
+      const moverBefore = row.color === 'w' ? before.whiteScore : -before.whiteScore;
+      const moverAfter = row.color === 'w' ? after.whiteScore : -after.whiteScore;
+      if (moverBefore >= 3 && moverAfter <= 1.5) return { key:'missed-win', icon:'??', name:'Missed win' };
+      if (bestMatch && loss <= 0.15 && isSoundMaterialSacrifice(row)) return { key:'brilliant', icon:'!!', name:'Brilliant' };
+      if (bestMatch && loss <= 0.12) return { key:'best', icon:'✓', name:'Best' };
+      if (loss <= 0.08) return { key:'great', icon:'!', name:'Great' };
+      if (loss <= 0.18) return { key:'excellent', icon:'★', name:'Excellent' };
+      if (loss <= 0.35) return { key:'good', icon:'○', name:'Good' };
+      if (loss <= 0.75) return { key:'inaccuracy', icon:'?!', name:'Inaccuracy' };
+      if (loss <= 1.5) return { key:'mistake', icon:'?', name:'Mistake' };
+      return { key:'blunder', icon:'??', name:'Blunder' };
+    }
+    function explanation(label, loss, bestSan, replySan, row) {
+      if (label.key === 'checkmate') return `${row.san} ends the game with checkmate.`;
+      if (label.key === 'brilliant') return 'A sound material sacrifice: Stockfish ranks this move first and the offered piece cannot simply be won without compensation.';
+      if (label.key === 'best') return `Matches Stockfish’s top choice and keeps the evaluation essentially unchanged${replySan ? `. The engine expects ${replySan} in reply` : ''}.`;
+      if (label.key === 'great') return `A very strong move, close to the engine’s preferred continuation${bestSan ? ` (${bestSan})` : ''}${replySan ? `. The engine expects ${replySan} in reply` : ''}.`;
+      if (label.key === 'excellent') return `A strong move that gives up only a small amount of the position’s evaluation${replySan ? `. The engine’s strongest reply is ${replySan}` : ''}.`;
+      if (label.key === 'good') return `A playable move that keeps the position healthy, although a slightly stronger continuation was available${replySan ? `. Watch for ${replySan}` : ''}.`;
+      const alternative = bestSan ? ` Stockfish preferred ${bestSan}.` : '';
+      const reply = replySan ? ` The strongest reply is ${replySan}.` : '';
+      if (label.key === 'inaccuracy') return `This slightly weakens the position and gives up about ${loss.toFixed(2)} pawns of evaluation.${alternative}${reply}`;
+      if (label.key === 'mistake') return `A significant error, losing about ${loss.toFixed(2)} pawns of evaluation.${alternative}${reply}`;
+      if (label.key === 'missed-win') return `The position was winning, but this move lets much of that advantage slip away.${alternative}${reply}`;
+      return `A major error that loses about ${loss.toFixed(2)} pawns of evaluation and gives the opponent a strong opportunity.${alternative}${reply}`;
+    }
+    function iconFor(key) {
+      return ({ brilliant:'!!',best:'✓',great:'!',excellent:'★',good:'○',inaccuracy:'?!',mistake:'?',blunder:'??','missed-win':'??',checkmate:'♔' })[key] || '·';
+    }
+    function parseGamePgn(game) {
+      const parsed = new Chess();
+      parsed.loadPgn(game.pgn || '');
+      const headers = parsed.header();
+      const startFen = headers.FEN || STANDARD_FEN;
+      const replay = new Chess(startFen);
+      const history = parsed.history({ verbose:true });
+      const nextRows = [], fens = [replay.fen()];
+      for (let i = 0; i < history.length; i++) {
+        const move = history[i];
+        const applied = replay.move({ from:move.from, to:move.to, ...(move.promotion ? { promotion:move.promotion } : {}) });
+        if (!applied) throw new Error(`The saved PGN has an invalid move at ply ${i + 1}.`);
+        nextRows.push({
+          ply:i + 1, moveNumber:Math.ceil((i + 1) / 2), san:applied.san, move:applied, color:applied.color,
+          uci:applied.from + applied.to + (applied.promotion || ''), before:fens[i], after:replay.fen(),
+          checkmate:replay.isCheckmate(), draw:replay.isDraw() && !replay.isCheckmate()
+        });
+        fens.push(replay.fen());
+      }
+      return { rows:nextRows, positions:fens, final:replay };
+    }
+    function displayResult(result) {
+      return result === '1-0' ? 'White wins' : result === '0-1' ? 'Black wins' : result === '1/2-1/2' ? 'Draw' : 'Completed';
+    }
+    function setGameInfo(game) {
+      record = game;
+      if (game.source === 'computer') { $('backLink').href = '/computer.html'; $('backLink').textContent = 'Back to computer'; }
+      $('blackName').textContent = game.black_name || 'Black';
+      $('whiteName').textContent = game.white_name || 'White';
+      $('resultBadge').textContent = game.result;
+      $('resultText').textContent = displayResult(game.result);
+      $('timeControl').textContent = game.source === 'computer' ? 'vs Stockfish' : `${Math.round((game.base || 0) / 60)}+${game.inc || 0}`;
+      $('gameMeta').textContent = `${new Date(game.created_at).toLocaleString()} · ${game.reason || 'Game completed'}`;
+      const parsed = parseGamePgn(game);
+      rows = parsed.rows; positions = parsed.positions;
+      $('moveCount').textContent = `${rows.length} plies`;
+      $('analysisApp').hidden = false; $('loading').hidden = true;
+      renderMoveList();
+      setPly(rows.length);
+      updateControls();
+      if (!rows.length) {
+        $('moveCount').textContent = 'No moves played';
+        $('movesGrid').textContent = 'No moves were recorded in this game.';
+        $('engineInsight').querySelector('strong').textContent = 'No moves to review';
+        $('engineInsight').querySelector('p').textContent = 'The game ended before a move was recorded.';
+      }
+    }
+    function setPly(ply) {
+      selectedPly = Math.max(0, Math.min(rows.length, Number(ply) || 0));
+      const position = new Chess(positions[selectedPly] || STANDARD_FEN);
+      const move = selectedPly ? rows[selectedPly - 1] : null;
+      board.render({ position:position.board(), orientation:flipped ? 'black' : 'white', lastMove:move ? [move.move.from, move.move.to] : [], inCheck:position.isCheck(), turn:position.turn(), interactive:false });
+      $('positionLabel').textContent = move ? `After ${move.moveNumber}${move.color === 'w' ? '.' : '…'} ${move.san}` : 'Starting position';
+      $('turnLabel').textContent = position.isGameOver() ? (position.isCheckmate() ? 'Checkmate' : 'Game over') : `${position.turn() === 'w' ? 'White' : 'Black'} to move${position.isCheck() ? ' · Check' : ''}`;
+      if (evaluations.length) {
+        const value = evaluations[selectedPly]?.whiteScore ?? 0;
+        const clamped = Math.max(-6, Math.min(6, value));
+        $('evalFill').style.height = `${((clamped + 6) / 12) * 100}%`;
+        $('evalValue').textContent = `${value > 0 ? '+' : ''}${value.toFixed(1)}`;
+        renderEvalGraph(evaluations);
+      }
+      document.querySelectorAll('.move-cell').forEach((el) => el.classList.toggle('selected', Number(el.dataset.ply) === selectedPly));
+      renderMoveDetail(move);
+      updateControls();
+    }
+    function renderMoveList() {
+      const container = $('movesGrid');
+      container.replaceChildren();
+      if (!rows.length) return;
+      for (let i = 0; i < rows.length; i += 2) {
+        const line = document.createElement('div'); line.className = 'move-row';
+        const number = document.createElement('span'); number.className = 'move-number'; number.textContent = `${Math.floor(i / 2) + 1}.`;
+        line.append(number);
+        for (const row of [rows[i], rows[i + 1]]) {
+          if (!row) { const empty = document.createElement('span'); line.append(empty); continue; }
+          const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'move-cell'; btn.dataset.ply = String(row.ply);
+          const mark = document.createElement('span'); mark.className = 'mini-mark'; mark.textContent = '·';
+          const san = document.createElement('span'); san.className = 'notation'; san.textContent = row.san;
+          btn.append(mark, san);
+          btn.addEventListener('click', () => setPly(row.ply));
+          line.append(btn);
+          row.moveButton = btn; row.markNode = mark;
+        }
+        container.append(line);
+      }
+    }
+    function renderMoveDetail(row) {
+      const insight = $('engineInsight'); insight.replaceChildren();
+      const mascot = document.createElement('span'); mascot.className = 'mascot';
+      const insightBody = document.createElement('div');
+      const insightTitle = document.createElement('strong');
+      const insightText = document.createElement('p');
+      if (row?.label) {
+        mascot.textContent = row.label.icon;
+        insightTitle.textContent = `${row.san} · ${row.label.name}`;
+        insightText.textContent = row.explanation;
+        const score = document.createElement('span'); score.className = 'score';
+        score.textContent = row.label.key === 'checkmate' ? 'MATE' : `Evaluation loss −${row.loss.toFixed(2)}`;
+        insightBody.append(insightTitle, insightText, score);
+      } else {
+        mascot.textContent = '♟';
+        insightTitle.textContent = running ? 'Analysing game…' : 'Ready to review';
+        insightText.textContent = running ? 'Stockfish is reviewing the game. Move explanations will appear here.' : 'Run Stockfish, then select any move for its classification and explanation.';
+        insightBody.append(insightTitle, insightText);
+      }
+      insight.append(mascot, insightBody);
+
+      const detail = $('moveDetail'); detail.replaceChildren();
+      const head = document.createElement('div'); head.className = 'move-detail-head';
+      const icon = document.createElement('span'); icon.className = 'review-icon';
+      const title = document.createElement('strong');
+      const text = document.createElement('p');
+      if (!row) {
+        icon.textContent = '·'; title.textContent = 'Starting position';
+        text.textContent = 'Select a move in the move list to inspect the engine’s preferred continuation.';
+        head.append(icon, title); detail.append(head, text); return;
+      }
+      icon.textContent = row.label?.icon || '·';
+      title.textContent = `${row.moveNumber}${row.color === 'w' ? '.' : '…'} ${row.san} · ${row.label?.name || 'Not analysed'}`;
+      if (row.label) head.classList.add('mark-' + row.label.key);
+      text.textContent = row.explanation || 'Run Stockfish analysis to get a move explanation.';
+      head.append(icon, title); detail.append(head, text);
+      if (row.bestSan && row.bestSan !== row.san) {
+        const alternative = document.createElement('p'); alternative.className = 'muted'; alternative.textContent = `Best alternative: ${row.bestSan}`; detail.append(alternative);
+      }
+      if (row.bestLineSan) {
+        const line = document.createElement('p'); line.className = 'muted'; line.textContent = `Engine continuation: ${row.bestLineSan}`; detail.append(line);
+      }
+      if (row.replySan && row.label?.key !== 'checkmate') {
+        const reply = document.createElement('p'); alternativeClass(reply); reply.textContent = `Engine’s strongest reply: ${row.replySan}`; detail.append(reply);
+      }
+      if (Number.isFinite(row.loss)) {
+        const score = document.createElement('p'); score.className = 'muted'; score.textContent = `Evaluation loss: ${row.loss.toFixed(2)} pawns`; detail.append(score);
+      }
+      function alternativeClass(element) { element.className = 'muted'; }
+    }
+    function renderSummary() {
+      const counts = new Map();
+      for (const row of rows) counts.set(row.label?.key, (counts.get(row.label?.key) || 0) + 1);
+      const summary = $('summary'); summary.replaceChildren();
+      const order = ['brilliant','best','great','excellent','good','inaccuracy','mistake','blunder','missed-win','checkmate'];
+      for (const key of order) {
+        const count = counts.get(key) || 0; if (!count) continue;
+        const pill = document.createElement('span'); pill.className = 'summary-pill';
+        const names = { brilliant:'Brilliant',best:'Best',great:'Great',excellent:'Excellent',good:'Good',inaccuracy:'Inaccuracy',mistake:'Mistake',blunder:'Blunder','missed-win':'Missed win',checkmate:'Checkmate' };
+        pill.textContent = `${iconFor(key)} ${names[key]} ${count}`; summary.append(pill);
+      }
+      summary.hidden = !summary.childElementCount;
+    }
+    function renderEvalGraph(values) {
+      const svg = $('evalGraph'); svg.replaceChildren();
+      const NS = 'http://www.w3.org/2000/svg', width = 640, mid = 55, height = 110;
+      const make = (tag, attrs) => { const node = document.createElementNS(NS, tag); for (const [key,value] of Object.entries(attrs)) node.setAttribute(key, String(value)); return node; };
+      svg.append(make('rect',{x:0,y:0,width,height,fill:'#3a3936'}));
+      svg.append(make('line',{x1:0,y1:mid,x2:width,y2:mid,stroke:'#77746e','stroke-width':1,'stroke-dasharray':'5 5'}));
+      if (!values.length) return;
+      const coords = values.map((entry,index) => {
+        const value = Math.max(-6,Math.min(6,entry.whiteScore || 0));
+        return { x:values.length===1?width/2:10+(index/(values.length-1))*(width-20), y:mid-(value/6)*48 };
+      });
+      const points = coords.map((p)=>`${p.x},${p.y}`).join(' ');
+      const area = `10,${mid} ${points} ${coords[coords.length-1].x},${mid}`;
+      svg.append(make('polygon',{points:area,fill:'rgba(245,244,239,.20)'}));
+      svg.append(make('polyline',{points,fill:'none',stroke:'#f4f3ef','stroke-width':3,'stroke-linecap':'round','stroke-linejoin':'round'}));
+      coords.forEach((p,index) => {
+        if (index===0 || index===coords.length-1 || index%4===0) {
+          svg.append(make('circle',{cx:p.x,cy:p.y,r:index===selectedPly?5:3.5,fill:index>0&&rows[index-1]?.label?.key==='blunder'?'#ff5d55':'#f6a24e',stroke:'#2d2b28','stroke-width':1}));
+        }
+      });
+    }
+    async function runAnalysis() {
+      if (!record || !ready || running || busy) return;
+      if (!rows.length) {
+        running = true; updateControls();
+        try {
+          const analysis = await evaluateFen(positions[0], Number($('depth').value));
+          evaluations = [analysis];
+          renderEvalGraph(evaluations); setPly(0);
+          $('engineInsight').querySelector('strong').textContent = 'No moves were played';
+          $('engineInsight').querySelector('p').textContent = 'The final position was analysed, but there are no individual moves to classify.';
+        } catch (error) { setEngineState(error.message); }
+        finally { running = false; updateControls(); }
+        return;
+      }
+      running = true; updateControls(); $('summary').hidden = true;
+      const depth = Math.max(10,Math.min(16,Number($('depth').value)||12));
+      const nextEvaluations = [];
+      const finalPosition = new Chess(positions[positions.length-1]);
+      const finalRow = rows[rows.length-1];
+      $('engineInsight').querySelector('strong').textContent = 'Analysing game…';
+      $('engineInsight').querySelector('p').textContent = 'Stockfish is checking every position and comparing the played move with its best continuation.';
+      try {
+        for (let i=0;i<positions.length;i++) {
+          setEngineState(`Analysing position ${i+1} of ${positions.length} · depth ${depth}`);
+          if (i===positions.length-1 && finalPosition.isGameOver()) {
+            nextEvaluations.push({ whiteScore:finalPosition.isCheckmate() ? (finalRow.color==='w'?50:-50) : 0, bestMove:'0000', score:null, pv:[], depth:0 });
+            continue;
+          }
+          const analysis = await evaluateFen(positions[i],depth);
+          if (!analysis) throw new Error(`Stockfish returned no score for position ${i+1}.`);
+          nextEvaluations.push(analysis);
+        }
+        evaluations = nextEvaluations;
+        for (const row of rows) {
+          const before = evaluations[row.ply-1], after = evaluations[row.ply];
+          const rawLoss = row.color==='w' ? before.whiteScore-after.whiteScore : after.whiteScore-before.whiteScore;
+          const loss = Math.max(0,rawLoss);
+          const bestSan = uciToSan(row.before,before.bestMove);
+          const replySan = uciToSan(row.after,after.bestMove);
+          row.loss = loss; row.bestSan = bestSan; row.replySan = replySan;
+          row.bestLineSan = uciLineToSan(row.before,before.pv);
+          row.label = classifyMove(row,before,after,loss);
+          row.explanation = explanation(row.label,loss,bestSan,replySan,row);
+          row.moveButton.classList.add('mark-' + row.label.key);
+          row.markNode.textContent = row.label.icon;
+          row.moveButton.title = `${row.label.name}: ${row.explanation}${row.bestLineSan ? ` Engine line: ${row.bestLineSan}` : ''}`;
+          row.moveButton.setAttribute('aria-label', `${row.moveNumber}${row.color === 'w' ? '.' : '…'} ${row.san}, ${row.label.name}. ${row.explanation}`);
+        }
+        renderSummary();
+        renderEvalGraph(evaluations);
+        $('engineInsight').querySelector('strong').textContent = 'Analysis complete';
+        $('engineInsight').querySelector('p').textContent = `${rows.length} half-moves reviewed. Select any move to inspect the board, engine classification and recommended continuation.`;
+        setEngineState(`Review complete · Stockfish depth ${depth}`);
+        setPly(rows.length);
+      } catch (error) {
+        setEngineState(error.message || 'The game could not be analysed.');
+        $('engineInsight').querySelector('strong').textContent = 'Analysis incomplete';
+        $('engineInsight').querySelector('p').textContent = 'Try a lower engine depth or reload the analysis page.';
+      } finally {
+        running = false; updateControls();
+      }
+    }
+    async function loadGame() {
+      if (params.get('source') === 'computer') {
+        let game = null;
+        try { game = JSON.parse(sessionStorage.getItem('zz:computer-game-analysis') || 'null'); }
+        catch { throw new Error('The saved computer game could not be read. Return to the computer page and open Review game again.'); }
+        if (!game || game.source !== 'computer' || !['1-0','0-1','1/2-1/2'].includes(game.result)) {
+          throw new Error('No completed computer game is available. Finish a game and open Review game from the computer page.');
+        }
+        setGameInfo(game);
+        return;
+      }
+      if (!gameId) throw new Error('No game ID was provided. Open analysis from a completed game.');
+      const response = await fetch('/api/games/' + encodeURIComponent(gameId));
+      const payload = await response.json().catch(()=>({}));
+      if (!response.ok) throw new Error(payload.error || 'Could not load this saved game.');
+      const game = payload.game;
+      if (!game || !['1-0','0-1','1/2-1/2'].includes(game.result)) throw new Error('Only completed games can be analysed.');
+      setGameInfo(game);
+    }
+    function stopPlayback() {
+      if (playTimer) clearInterval(playTimer);
+      playTimer = null; $('playMoves').textContent = '▶'; $('playMoves').title = 'Auto play';
+    }
+    function togglePlayback() {
+      if (playTimer) { stopPlayback(); return; }
+      if (selectedPly >= rows.length) setPly(0);
+      $('playMoves').textContent = 'Ⅱ'; $('playMoves').title = 'Pause';
+      playTimer = setInterval(() => {
+        if (selectedPly >= rows.length) { stopPlayback(); return; }
+        setPly(selectedPly+1);
+      },850);
+    }
+    $('firstMove').addEventListener('click',()=>{stopPlayback();setPly(0);});
+    $('prevMove').addEventListener('click',()=>{stopPlayback();setPly(selectedPly-1);});
+    $('nextMove').addEventListener('click',()=>{stopPlayback();setPly(selectedPly+1);});
+    $('lastMove').addEventListener('click',()=>{stopPlayback();setPly(rows.length);});
+    $('playMoves').addEventListener('click',togglePlayback);
+    $('flipBoard').addEventListener('click',()=>{flipped=!flipped;setPly(selectedPly);});
+    $('runReview').addEventListener('click',runAnalysis);
+    $('evalGraph').addEventListener('click',(event)=>{
+      if (!evaluations.length) return;
+      const rect=$('evalGraph').getBoundingClientRect();
+      const fraction=Math.max(0,Math.min(1,(event.clientX-rect.left)/Math.max(1,rect.width)));
+      stopPlayback(); setPly(Math.round(fraction*(evaluations.length-1)));
+    });
+
+    try { await loadGame(); }
+    catch (error) { $('loading').className='page-error'; $('loading').textContent=error.message; }
+    initEngine();
+    updateControls();
+  </script>
+</body>
+</html>
