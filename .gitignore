@@ -5,6 +5,5 @@ coverage/
 *.log
 
 # Local engines and downloaded puzzle data are deliberately not committed.
-engines/stockfish/
 engines/puzzles/
 engines/zstd/
