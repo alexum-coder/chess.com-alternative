@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Zugzwang: free online chess</title>
 <link rel="stylesheet" href="/theme.css">
+<link rel="stylesheet" href="/board.css">
 <style>
   main { max-width: 1040px; margin: 0 auto; padding: 18px 16px 48px; display: grid; gap: 24px;
     grid-template-columns: minmax(0, 640px) minmax(280px, 1fr); align-items: start; }
@@ -203,7 +204,7 @@
       <div class="clock" id="topClock">--:--</div>
     </div>
     <div class="boardwrap">
-      <div id="board" role="grid" aria-label="Chess board"></div>
+      <div id="board" class="zz-board" role="grid" aria-label="Chess board"></div>
       <div class="promo hidden" id="promo" role="dialog" aria-label="Choose a promotion piece"></div>
       <div class="drawbar hidden" id="drawBar" role="alert">
         <span>Draw offered</span>
@@ -313,6 +314,7 @@
 <script src="/nav.js"></script>
 <script type="module">
 import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.0.0/+esm';
+import { ZugzwangBoard } from '/board.js';
 
 const $ = (s) => document.querySelector(s);
 const FILES = 'abcdefgh';
@@ -389,6 +391,7 @@ const idleChess = new Chess();
 //         drawBy: 'w'|'b'|null pending draw offer, drawLock: ply from which I may offer again }
 let game = null;
 let selected = null, targets = [], tick = null, promoOpen = false;
+const boardView = new ZugzwangBoard($('#board'), onSquare);
 let myName = null, myRating = null, myGames = 0;
 
 const sb = window.ZZ?.sb || null;
@@ -858,35 +861,18 @@ function drawClocks() {
 function render() {
   const chess = game ? game.chess : idleChess, flip = game?.color === 'b';
   const grid = chess.board(), turn = chess.turn(), inCheck = chess.inCheck();
-  const boardEl = $('#board'); boardEl.replaceChildren();
-  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
-    const rr = flip ? 7 - r : r, cc = flip ? 7 - c : c, name = FILES[cc] + (8 - rr), p = grid[rr][cc];
-    const el = document.createElement('div');
-    el.className = 'sq ' + ((rr + cc) % 2 ? 'd' : 'l');
-    el.dataset.sq = name; el.tabIndex = game ? 0 : -1;
-    if (game?.last?.includes(name)) el.classList.add('last');
-    if (selected === name) el.classList.add('sel');
-    if (targets.includes(name)) {
-      el.classList.add('target'); if (p) el.classList.add('cap');
-      if (game && game.chess.turn() !== game.color) el.classList.add('pre'); // premove squares are drawn blue
-    }
-    if (game?.pre) {
-      if (name === game.pre.from) el.classList.add('pre-from');
-      if (name === game.pre.to) el.classList.add('pre-to');
-    }
-    if (inCheck && p && p.type === 'k' && p.color === turn) el.classList.add('chk');
-    if (p) el.appendChild(pieceImg(p.color, p.type));
-    // Show the queued piece faintly on its destination square.
-    if (game?.pre && name === game.pre.to) {
-      const mover = game.chess.get(game.pre.from);
-      if (mover) { const g = pieceImg(mover.color, game.pre.promotion || mover.type); g.classList.add('ghost'); el.appendChild(g); }
-    }
-    if (r === 7) el.insertAdjacentHTML('beforeend', `<i class="f">${FILES[cc]}</i>`);
-    if (c === 0) el.insertAdjacentHTML('beforeend', `<i class="r">${8 - rr}</i>`);
-    el.addEventListener('click', () => onSquare(name));
-    el.addEventListener('keydown', (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onSquare(name)));
-    boardEl.appendChild(el);
-  }
+  boardView.render({
+    position: grid,
+    orientation: flip ? 'black' : 'white',
+    selected,
+    targets,
+    lastMove: game?.last || [],
+    inCheck,
+    turn,
+    premove: game?.pre || null,
+    premoveTargets: !!game && game.chess.turn() !== game.color,
+    interactive: true
+  });
   const m = $('#moves'); m.replaceChildren();
   (game?.moves || []).forEach((san, i) => {
     if (i % 2 === 0) m.appendChild(Object.assign(document.createElement('span'), { className: 'n', textContent: `${i / 2 + 1}.` }));

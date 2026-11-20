@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test test/*.test.js",
-    "check": "node --check server.js && node --check glicko2.js && node --check stockfish-analyzer.js && node --check engine-review.js && node --check tournament-recovery.js && node --check rating-status.js && node --check nav.js && node --check puzzle-import.js",
+    "check": "node --check server.js && node --check glicko2.js && node --check stockfish-analyzer.js && node --check engine-review.js && node --check tournament-recovery.js && node --check rating-status.js && node --check nav.js && node --check puzzle-import.js && node --input-type=module --check < board.js",
     "import:puzzles": "node puzzle-import.js"
   },
   "engines": {

@@ -1,20 +1,176 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Play computer · Zugzwang</title><link rel="stylesheet" href="/theme.css"><style>
-body{margin:0;background:#f1f3ef;color:#29352a;font:16px system-ui}header{padding:14px 5vw;background:#fff;border-bottom:1px solid #dce4db;display:flex;gap:20px;align-items:center}header a{color:inherit;text-decoration:none;font-weight:700}header strong{margin-right:auto;color:#5b8e3d;font-size:1.2rem}main{max-width:1100px;margin:24px auto;padding:0 16px;display:grid;grid-template-columns:minmax(280px,620px) minmax(260px,1fr);gap:20px}.panel{background:#fff;border:1px solid #e0e7de;border-radius:12px;padding:16px;box-shadow:0 3px 12px #253a2510}.board{display:grid;grid-template-columns:repeat(8,1fr);aspect-ratio:1;overflow:hidden;border-radius:8px}.sq{border:0;border-radius:0;padding:0;aspect-ratio:1;font-size:clamp(24px,6vw,56px);line-height:1}.l{background:#eeeed2}.d{background:#769656}.sq.sel{box-shadow:inset 0 0 0 4px #f6d64a}.sq.move{background-image:radial-gradient(#283b2780 20%,transparent 22%)}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}.row button,select{padding:9px;border:1px solid #dce4db;border-radius:8px;background:#f5f8f3;color:#29352a}.primary{background:#81b64c!important;font-weight:700}.status{color:#657264;min-height:1.5em}.moves{max-height:230px;overflow:auto;line-height:1.9}.tag{display:inline-block;margin-left:7px;padding:0 6px;border-radius:5px;background:#edf4e8;color:#456c2f;font-weight:800}.eval{font-size:1.5rem;font-weight:800}.hint{color:#6c776c;font-size:.88rem}@media(max-width:780px){main{grid-template-columns:1fr;margin:12px auto}}
-</style></head><body><header><strong>Zugzwang</strong><a href="/">Play online</a><a href="/puzzles.html">Puzzles</a><a href="/computer.html">Play computer</a></header><main><section class="panel"><h2>Play vs. computer</h2><div class="row"><label>Engine strength <select id="depth"><option value="8">Casual</option><option value="12" selected>Club</option><option value="16">Strong</option><option value="20">Maximum</option></select></label><button id="new" class="primary">New game</button><button id="undo">Undo</button></div><div id="board" class="board" aria-label="Chess board"></div><p id="status" class="status">Loading Stockfish…</p><div class="row"><button id="analyze">Analyze position</button><button id="review">Review game</button></div><p class="hint">Engine runs locally in your browser. The first load downloads the Stockfish WebAssembly engine.</p></section><aside class="panel"><h2>Game review</h2><div class="eval" id="eval">—</div><p id="best" class="status">Choose a move or analyze the position.</p><div id="moves" class="moves"></div><h3>Move annotations</h3><p class="hint">!! Brilliant · ! Great · ★ Excellent · ⓘ Interesting · ?! Inaccuracy · ? Mistake · ?? Blunder</p><div id="annotations"></div></aside></main>
-<script type="module">
-import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.0.0/+esm';
-const $=id=>document.getElementById(id), glyph={wk:'♔',wq:'♕',wr:'♖',wb:'♗',wn:'♘',wp:'♙',bk:'♚',bq:'♛',br:'♜',bb:'♝',bn:'♞',bp:'♟'};
-let chess=new Chess(), selected=null, worker=null, ready=false, busy=false, lastEval=null, bestMove=null, annotations=[];
-function initEngine(){try{worker=new Worker('/vendor/stockfish/stockfish-19-lite-single.js');worker.onmessage=e=>onEngine(String(e.data));worker.postMessage('uci');}catch(e){$('status').textContent='Stockfish could not start. Run npm install and check /vendor/stockfish assets.'}}
-function onEngine(line){if(line==='uciok')worker.postMessage('isready');if(line==='readyok'){ready=true;$('status').textContent='Stockfish ready · White to move';}const m=line.match(/info .*\bscore (cp|mate) (-?\d+).*\bdepth (\d+)/);if(m){lastEval=m[1]==='cp'?Number(m[2])/100:(Number(m[2])>0?99:-99);$('eval').textContent=(lastEval>0?'+':'')+lastEval.toFixed(2);$('best').textContent='Engine search depth '+m[3];}const b=line.match(/bestmove ([a-h][1-8][a-h][1-8][qrbn]?)/);if(b){busy=false;bestMove=b[1];if(window.pendingBot){const mv=window.pendingBot;window.pendingBot=null;makeBotMove(b[1]);}else $('best').textContent='Best move: '+b[1];}}
-function askEngine(fen,depth,bot=false){if(!ready||busy)return;$('best').textContent='Thinking…';busy=true;window.pendingBot=bot?true:null;worker.postMessage('stop');worker.postMessage('position fen '+fen);worker.postMessage('go depth '+depth);}
-function render(){const b=$('board');b.replaceChildren();for(let r=7;r>=0;r--)for(let f=0;f<8;f++){const sq='abcdefgh'[f]+(r+1),p=chess.get(sq),el=document.createElement('button');el.className='sq '+((r+f)%2?'d':'l')+(selected===sq?' sel':'');el.textContent=p?glyph[p.color+p.type]:'';el.setAttribute('aria-label',sq+(p?' '+p.color+' '+p.type:''));el.onclick=()=>click(sq);b.append(el);}const hist=chess.history();$('moves').textContent=hist.map((m,i)=>(i%2===0?Math.floor(i/2+1)+'. ':'')+m).join('  ');$('status').textContent=chess.isGameOver()?(chess.isCheckmate()?'Checkmate':chess.isDraw()?'Draw':'Game over'):(chess.turn()==='w'?'Your move':'Stockfish to move');}
-function click(sq){if(chess.isGameOver()||chess.turn()!=='w'||busy)return;const p=chess.get(sq);if(selected){try{const m=chess.move({from:selected,to:sq,promotion:'q'});selected=null;if(m){render();askEngine(chess.fen(),Number($('depth').value),true);return;}}catch{} }selected=p&&p.color==='w'?sq:null;render();}
-function makeBotMove(uci){try{chess.move({from:uci.slice(0,2),to:uci.slice(2,4),promotion:uci[4]||'q'});}catch{}render();}
-$('new').onclick=()=>{chess=new Chess();selected=null;annotations=[];render();$('eval').textContent='—';$('best').textContent='New game. Your move.'};$('undo').onclick=()=>{if(chess.history().length){chess.undo();if(chess.turn()==='b')chess.undo();selected=null;render();}};
-$('analyze').onclick=()=>askEngine(chess.fen(),Number($('depth').value));
-function classify(loss){if(loss<=.08)return ['!!','Brilliant'];if(loss<=.18)return ['!','Great'];if(loss<=.35)return ['★','Excellent'];if(loss<=.65)return ['?!','Inaccuracy'];if(loss<=1.2)return ['?','Mistake'];return ['??','Blunder'];}
-$('review').onclick=async()=>{if(!ready||busy)return;const history=chess.history({verbose:true});if(!history.length){$('annotations').textContent='Play a few moves first.';return;}const copy=new Chess();const rows=[];for(let i=0;i<history.length;i++){const before=copy.fen();const move=history[i];copy.move(move);rows.push({n:i+1,san:move.san,before,after:copy.fen(),color:move.color});}$('annotations').textContent='Reviewing each move with Stockfish…';const labels=[];for(const row of rows){const a=await evaluateFen(row.before),b=await evaluateFen(row.after);const loss=row.color==='w'?a-b:b-a;const [symbol,name]=classify(Math.max(0,loss));labels.push(`<p>${Math.ceil((row.n)/2)}${row.color==='w'?'.':'…'} ${row.san} <b class=\"tag\">${symbol} ${name}</b> <small>−${Math.max(0,loss).toFixed(2)}</small></p>`);}$('annotations').innerHTML=labels.join('');};
-function evaluateFen(fen){return new Promise(resolve=>{let val=0;const turn=fen.split(' ')[1];const handler=e=>{const s=String(e.data),m=s.match(/info .*\bscore cp (-?\d+)/);if(m)val=(Number(m[1])/100)*(turn==='w'?1:-1);const b=s.match(/bestmove /);if(b){worker.removeEventListener('message',handler);busy=false;resolve(val);}};busy=true;worker.addEventListener('message',handler);worker.postMessage('position fen '+fen);worker.postMessage('go depth 10');});}
-render();initEngine();
-</script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Play computer · Zugzwang</title>
+  <link rel="stylesheet" href="/theme.css">
+  <link rel="stylesheet" href="/board.css">
+  <style>
+    main { max-width:1160px; margin:24px auto; padding:0 18px 48px; display:grid; grid-template-columns:minmax(280px,650px) minmax(260px,1fr); gap:20px; align-items:start; }
+    .panel { background:var(--panel); border:1px solid var(--line); border-radius:11px; padding:18px; box-shadow:0 2px 9px rgba(35,49,39,.045); }
+    .panel h2 { margin:0 0 12px; font-size:1.04rem; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:10px 0; }
+    .row button, select { padding:9px 12px; border:1px solid var(--line); border-radius:8px; background:var(--panel2); color:var(--ink); font:inherit; cursor:pointer; }
+    .primary { background:var(--accent)!important; border-color:var(--accent)!important; color:#172014!important; font-weight:800; }
+    .status { color:var(--muted); min-height:1.5em; }
+    .moves { max-height:230px; overflow:auto; line-height:1.9; }
+    .tag { display:inline-block; margin-left:7px; padding:0 6px; border-radius:5px; background:#edf4e8; color:#456c2f; font-weight:800; }
+    .eval { font-size:1.5rem; font-weight:800; }
+    .hint { color:var(--muted); font-size:.88rem; }
+    @media(max-width:780px){ main { grid-template-columns:1fr; margin:14px auto; padding:0 12px 36px; gap:12px; } .panel { padding:14px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="panel">
+      <h2>Play vs. computer</h2>
+      <div class="row">
+        <label for="depth">Engine strength</label>
+        <select id="depth"><option value="8">Casual</option><option value="12" selected>Club</option><option value="16">Strong</option><option value="20">Maximum</option></select>
+        <button id="new" class="primary">New game</button>
+        <button id="undo">Undo</button>
+      </div>
+      <div id="board" class="zz-board" aria-label="Chess board"></div>
+      <p id="status" class="status" role="status" aria-live="polite">Loading Stockfish…</p>
+      <div class="row"><button id="analyze">Analyze position</button><button id="review">Review game</button></div>
+      <p class="hint">Engine runs locally in your browser. The first load downloads the Stockfish WebAssembly engine.</p>
+    </section>
+    <aside class="panel">
+      <h2>Game review</h2>
+      <div class="eval" id="eval">—</div>
+      <p id="best" class="status">Choose a move or analyze the position.</p>
+      <div id="moves" class="moves"></div>
+      <h3>Move annotations</h3>
+      <p class="hint">!! Brilliant · ! Great · ★ Excellent · ⓘ Interesting · ?! Inaccuracy · ? Mistake · ?? Blunder</p>
+      <div id="annotations"></div>
+    </aside>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
+  <script src="/config.js"></script>
+  <script src="/nav.js"></script>
+  <script type="module">
+    import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.0.0/+esm';
+    import { ZugzwangBoard } from '/board.js';
+    const $ = (id) => document.getElementById(id);
+    let chess = new Chess(), selected = null, targets = [], lastMove = [], worker = null;
+    let ready = false, busy = false, lastEval = null, bestMove = null;
+    const board = new ZugzwangBoard($('board'), click);
+
+    function initEngine() {
+      try {
+        worker = new Worker('/vendor/stockfish/stockfish-19-lite-single.js');
+        worker.onmessage = (event) => onEngine(String(event.data));
+        worker.postMessage('uci');
+      } catch {
+        $('status').textContent = 'Stockfish could not start. Run npm install and check /vendor/stockfish assets.';
+      }
+    }
+    function onEngine(line) {
+      if (line === 'uciok') worker.postMessage('isready');
+      if (line === 'readyok') { ready = true; $('status').textContent = 'Stockfish ready · White to move'; }
+      const score = line.match(/info .*\bscore (cp|mate) (-?\d+).*\bdepth (\d+)/);
+      if (score) {
+        lastEval = score[1] === 'cp' ? Number(score[2]) / 100 : (Number(score[2]) > 0 ? 99 : -99);
+        $('eval').textContent = (lastEval > 0 ? '+' : '') + lastEval.toFixed(2);
+        $('best').textContent = 'Engine search depth ' + score[3];
+      }
+      const best = line.match(/bestmove ([a-h][1-8][a-h][1-8][qrbn]?)/);
+      if (best) {
+        busy = false; bestMove = best[1];
+        if (window.pendingBot) { window.pendingBot = null; makeBotMove(bestMove); }
+        else $('best').textContent = 'Best move: ' + bestMove;
+      }
+    }
+    function askEngine(fen, depth, bot = false) {
+      if (!ready || busy) return;
+      $('best').textContent = 'Thinking…'; busy = true; window.pendingBot = bot ? true : null;
+      worker.postMessage('stop'); worker.postMessage('position fen ' + fen); worker.postMessage('go depth ' + depth);
+    }
+    function render() {
+      board.render({ position:chess.board(), orientation:'white', selected, targets, lastMove, inCheck:chess.isCheck(), turn:chess.turn() });
+      const history = chess.history();
+      $('moves').textContent = history.map((move, index) => (index % 2 === 0 ? Math.floor(index / 2 + 1) + '. ' : '') + move).join('  ');
+      $('status').textContent = chess.isGameOver() ? (chess.isCheckmate() ? 'Checkmate' : chess.isDraw() ? 'Draw' : 'Game over') : (chess.turn() === 'w' ? 'Your move' : 'Stockfish to move');
+    }
+    function click(square) {
+      if (chess.isGameOver() || chess.turn() !== 'w' || busy) return;
+      const piece = chess.get(square);
+      if (selected && targets.includes(square)) {
+        try {
+          const move = chess.move({ from:selected, to:square, promotion:'q' });
+          if (move) {
+            lastMove = [move.from, move.to]; selected = null; targets = [];
+            render(); askEngine(chess.fen(), Number($('depth').value), true); return;
+          }
+        } catch { /* illegal move; let the player select another square */ }
+      }
+      selected = piece && piece.color === 'w' ? square : null;
+      targets = selected ? chess.moves({ square:selected, verbose:true }).map((move) => move.to) : [];
+      render();
+    }
+    function makeBotMove(uci) {
+      try {
+        const move = chess.move({ from:uci.slice(0,2), to:uci.slice(2,4), promotion:uci[4] || 'q' });
+        if (move) lastMove = [move.from, move.to];
+      } catch { /* Stockfish should always return a legal move for this position. */ }
+      selected = null; targets = []; render();
+    }
+    function classify(loss) {
+      if (loss <= .08) return ['!!','Brilliant'];
+      if (loss <= .18) return ['!','Great'];
+      if (loss <= .35) return ['★','Excellent'];
+      if (loss <= .65) return ['?!','Inaccuracy'];
+      if (loss <= 1.2) return ['?','Mistake'];
+      return ['??','Blunder'];
+    }
+    function evaluateFen(fen) {
+      return new Promise((resolve) => {
+        let value = 0;
+        const turn = fen.split(' ')[1];
+        const handler = (event) => {
+          const text = String(event.data), match = text.match(/info .*\bscore cp (-?\d+)/);
+          if (match) value = (Number(match[1]) / 100) * (turn === 'w' ? 1 : -1);
+          if (/bestmove /.test(text)) { worker.removeEventListener('message', handler); busy = false; resolve(value); }
+        };
+        busy = true; worker.addEventListener('message', handler);
+        worker.postMessage('position fen ' + fen); worker.postMessage('go depth 10');
+      });
+    }
+
+    $('new').addEventListener('click', () => {
+      chess = new Chess(); selected = null; targets = []; lastMove = [];
+      render(); $('eval').textContent = '—'; $('best').textContent = 'New game. Your move.'; $('annotations').replaceChildren();
+    });
+    $('undo').addEventListener('click', () => {
+      if (!chess.history().length || busy) return;
+      chess.undo(); if (chess.turn() === 'b') chess.undo();
+      selected = null; targets = [];
+      const history = chess.history({ verbose:true });
+      const last = history[history.length - 1]; lastMove = last ? [last.from, last.to] : [];
+      render();
+    });
+    $('analyze').addEventListener('click', () => askEngine(chess.fen(), Number($('depth').value)));
+    $('review').addEventListener('click', async () => {
+      if (!ready || busy) return;
+      const history = chess.history({ verbose:true });
+      if (!history.length) { $('annotations').textContent = 'Play a few moves first.'; return; }
+      const copy = new Chess(), rows = [];
+      for (let i = 0; i < history.length; i++) {
+        const before = copy.fen(), move = history[i]; copy.move(move);
+        rows.push({ n:i+1, san:move.san, before, after:copy.fen(), color:move.color });
+      }
+      $('annotations').textContent = 'Reviewing each move with Stockfish…';
+      const labels = [];
+      for (const row of rows) {
+        const before = await evaluateFen(row.before), after = await evaluateFen(row.after);
+        const loss = row.color === 'w' ? before - after : after - before;
+        const [symbol, name] = classify(Math.max(0, loss));
+        labels.push(`<p>${Math.ceil(row.n / 2)}${row.color === 'w' ? '.' : '…'} ${row.san} <b class="tag">${symbol} ${name}</b> <small>−${Math.max(0, loss).toFixed(2)}</small></p>`);
+      }
+      $('annotations').innerHTML = labels.join('');
+    });
+    render(); initEngine();
+  </script>
+</body>
+</html>

@@ -6,11 +6,11 @@
 
   const style = document.createElement('style');
   style.textContent = `
-  .zznav{width:100%;padding:12px max(18px,calc((100vw - 1180px)/2));display:flex;align-items:center;gap:26px;
+  .zznav{position:sticky;top:0;z-index:1000;width:100%;padding:12px max(18px,calc((100vw - 1180px)/2));display:flex;align-items:center;gap:26px;
     color:#f7f8f6;background:#26332b;box-shadow:0 2px 10px rgba(24,36,27,.15);font:700 14px Manrope,system-ui,-apple-system,"Segoe UI",sans-serif}
   .zznav a{color:inherit;text-decoration:none}
   .zzbrand{font-size:1.22rem;letter-spacing:-.025em;color:#fff}
-  .zznav nav{display:flex;gap:18px}
+  .zznav nav{display:flex;gap:18px;align-items:center;min-width:0}
   .zznav nav a{color:#c5d1c7;padding:5px 0;border-bottom:2px solid transparent}
   .zznav nav a[aria-current="page"]{color:#fff;border-color:#9bd36c}
   .zzuser{margin-left:auto;display:flex;align-items:center;gap:10px}
@@ -19,7 +19,7 @@
     background:transparent;color:#f7f8f6}
   .zzbtn{background:#81b64c;border-color:#81b64c;color:#172014;font-weight:800}
   .zznav a:focus-visible,.zznav button:focus-visible{outline:2px solid var(--accent,#f2b84b);outline-offset:2px}
-  @media (max-width:560px){.zznav{gap:14px;padding:10px 14px}.zznav nav{gap:12px}.zzwho{display:none}.zzbrand{font-size:1.05rem}}`;
+  @media (max-width:560px){.zznav{gap:12px;padding:10px 12px}.zznav nav{gap:11px;overflow-x:auto;white-space:nowrap;scrollbar-width:none}.zznav nav::-webkit-scrollbar{display:none}.zznav nav a{font-size:.82rem}.zzwho{display:none}.zzbrand{font-size:1.02rem}.zzuser{margin-left:0}}`;
   document.head.appendChild(style);
 
   const header = document.createElement('header');
@@ -32,12 +32,17 @@
     return e;
   };
   const nav = document.createElement('nav');
-  for (const [label, href] of [['Play', '/'], ['Computer', '/computer.html'], ['Puzzles', '/puzzles.html'], ['Tournaments', '/#tournamentPanel'], ['Profile', '/profile.html']]) {
+  const currentPath = location.pathname || '/';
+  const links = [
+    ['Play', '/', currentPath === '/' || currentPath === '/index.html'],
+    ['Computer', '/computer.html', currentPath === '/computer.html'],
+    ['Puzzles', '/puzzles.html', currentPath === '/puzzles.html'],
+    ['Tournaments', '/#tournamentPanel', location.hash === '#tournamentPanel'],
+    ['Profile', '/profile.html', currentPath === '/profile.html']
+  ];
+  for (const [label, href, active] of links) {
     const a = mk('a', '', label, href);
-    if ((href === '/' && (location.pathname === '/' || location.pathname === '/index.html'))
-        || (href === '/profile.html' && location.pathname === href)
-        || (href === '/computer.html' && location.pathname === href)
-        || (href === '/puzzles.html' && location.pathname === href)) a.setAttribute('aria-current', 'page');
+    if (active) a.setAttribute('aria-current', 'page');
     nav.appendChild(a);
   }
   const box = mk('div', 'zzuser');
@@ -48,7 +53,12 @@
   async function render(force) {
     const my = ++seq;
     if (!sb) { box.replaceChildren(); return; }
-    if (!ZZ.session) { ZZ.account = null; box.replaceChildren(mk('a', 'zzbtn', 'Log in', '/login.html')); return; }
+    if (!ZZ.session) {
+      ZZ.account = null;
+      box.replaceChildren();
+      if (currentPath !== '/login.html') box.appendChild(mk('a', 'zzbtn', 'Log in', '/login.html'));
+      return;
+    }
     if (force || ZZ.account?.id !== ZZ.session.user.id) {
       try {
         const r = await fetch('/api/me', { headers: { Authorization: 'Bearer ' + ZZ.session.access_token } });
