@@ -8,3 +8,5 @@ coverage/
 engines/stockfish/
 engines/puzzles/
 engines/zstd/
+
+pieces.zip
