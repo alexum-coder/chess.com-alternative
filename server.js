@@ -343,6 +343,28 @@ app.get('/stockfish-worker.js', (req, res) => {
     }
   `);
 });
+app.get('/stockfish-worker.wasm', async (req, res) => {
+  if (!browserStockfishWasmUrl) {
+    return res.status(503).send('Stockfish WASM URL is not configured');
+  }
+
+  try {
+    const upstream = await fetch(browserStockfishWasmUrl);
+
+    if (!upstream.ok) {
+      return res.status(upstream.status).send('Could not load Stockfish WASM');
+    }
+
+    const wasm = Buffer.from(await upstream.arrayBuffer());
+
+    res.set('Content-Type', 'application/wasm');
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.send(wasm);
+  } catch (error) {
+    console.error('Stockfish WASM proxy error:', error);
+    res.status(502).send('Stockfish WASM proxy failed');
+  }
+});
 
 app.get('/api/health', async (req, res) => {
   const urlsConfigured = !!(browserStockfishJsUrl && browserStockfishWasmUrl);
