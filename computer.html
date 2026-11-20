@@ -34,7 +34,7 @@
       <div id="board" class="zz-board" aria-label="Chess board"></div>
       <p id="status" class="status" role="status" aria-live="polite">Loading Stockfish…</p>
       <div class="row"><button id="analyze">Analyze position</button><button id="review">Review game</button></div>
-      <p class="hint">Engine runs locally in your browser. The first load downloads the Stockfish WebAssembly engine.</p>
+      <p class="hint">Engine runs locally in your browser. Stockfish's JavaScript and WebAssembly files are downloaded from Zugzwang's public Supabase Storage bucket.</p>
     </section>
     <aside class="panel">
       <h2>Game review</h2>
@@ -60,12 +60,12 @@
 
     function initEngine() {
       try {
-        worker = new Worker('/vendor/stockfish/stockfish-19-lite-single.js');
+        worker = new Worker('/stockfish-worker.js');
         worker.onmessage = (event) => onEngine(String(event.data));
         worker.onerror = (event) => {
           engineFailed = true; ready = false; busy = false; queuedSearch = null;
           const detail = event.message ? ' (' + event.message + ')' : '';
-          $('status').textContent = 'Stockfish failed to load' + detail + '. Check that /vendor/stockfish/stockfish-19-lite-single.js and its matching .wasm both return HTTP 200.';
+          $('status').textContent = 'Stockfish failed to load' + detail + '. Check that the stockfish Storage bucket is public and both engine files return HTTP 200.';
           $('best').textContent = 'The browser engine could not start.';
         };
         worker.onmessageerror = () => {
@@ -75,7 +75,7 @@
         worker.postMessage('uci');
       } catch (error) {
         engineFailed = true;
-        $('status').textContent = 'Stockfish could not start: ' + (error.message || 'Worker creation failed') + '. Check npm install and /vendor/stockfish assets.';
+        $('status').textContent = 'Stockfish could not start: ' + (error.message || 'Worker creation failed') + '. Check /stockfish-worker.js and the public Supabase Storage engine assets.';
       }
     }
     function startSearch(request) {
@@ -87,6 +87,12 @@
       return true;
     }
     function onEngine(line) {
+      if (line.startsWith('stockfish-bootstrap-error:')) {
+        engineFailed = true; ready = false; busy = false; queuedSearch = null;
+        $('status').textContent = 'Could not load Stockfish from Supabase Storage: ' + line.slice('stockfish-bootstrap-error:'.length).trim();
+        $('best').textContent = 'Check the public bucket, object names and Storage CORS response.';
+        return;
+      }
       if (line === 'uciok') worker.postMessage('isready');
       if (line === 'readyok') {
         ready = true;

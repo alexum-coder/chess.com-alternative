@@ -5,6 +5,10 @@ const http = require('http');
 const { Server } = require('socket.io');
 const { Chess } = require('chess.js');
 const crypto = require('crypto');
+const os = require('node:os');
+const { Readable } = require('node:stream');
+const { pipeline } = require('node:stream/promises');
+const { createGunzip } = require('node:zlib');
 const { updateGlicko2 } = require('./glicko2');
 const { StockfishAnalyzer } = require('./stockfish-analyzer');
 const { reviewGameMoves } = require('./engine-review');
@@ -301,25 +305,70 @@ app.post('/api/mod/report-status', async (req, res) => {
 });
 
 
-// Browser Stockfish assets are served same-origin so Worker() can load the JS/WASM pair.
-const stockfishDir = path.join(__dirname, 'node_modules', 'stockfish');
-const browserStockfishJs = path.join(stockfishDir, 'stockfish-19-lite-single.js');
-const browserStockfishWasm = path.join(stockfishDir, 'stockfish-19-lite-single.wasm');
-if (fs.existsSync(stockfishDir)) {
-  app.use('/vendor/stockfish', express.static(stockfishDir, { immutable: true, maxAge: '1y' }));
-  console.log('Browser Stockfish assets:', {
-    js: fs.existsSync(browserStockfishJs), wasm: fs.existsSync(browserStockfishWasm)
-  });
-} else {
-  console.warn('Stockfish npm package is missing; /computer.html cannot start its browser engine until npm install runs.');
-}
-app.get('/api/health', (req, res) => {
-  const engineJs = fs.existsSync(browserStockfishJs);
-  const engineWasm = fs.existsSync(browserStockfishWasm);
-  res.status(engineJs && engineWasm ? 200 : 503).json({
-    ok: engineJs && engineWasm,
+// Browser Stockfish is stored in a public Supabase Storage bucket. The page
+// creates a same-origin Worker; this bootstrap imports the cross-origin JS
+// loader and points Emscripten at the matching public WASM object.
+const stockfishBucket = String(process.env.STOCKFISH_STORAGE_BUCKET || 'stockfish').trim();
+const storageObjectUrl = (file) => {
+  if (!process.env.SUPABASE_URL || !stockfishBucket) return null;
+  const base = process.env.SUPABASE_URL.replace(/\/$/, '');
+  return `${base}/storage/v1/object/public/${encodeURIComponent(stockfishBucket)}/${encodeURIComponent(file)}`;
+};
+const browserStockfishJsUrl = storageObjectUrl('stockfish-19-lite-single.js');
+const browserStockfishWasmUrl = storageObjectUrl('stockfish-19-lite-single.wasm');
+const nativeStockfishBucket = String(process.env.STOCKFISH_NATIVE_BUCKET || 'stockfish-native').trim();
+// New split-object configuration; retain the single-object variable for backwards compatibility.
+const nativeStockfishObjects = String(process.env.STOCKFISH_NATIVE_OBJECTS || process.env.STOCKFISH_NATIVE_OBJECT || '')
+  .split(',').map((name) => name.trim()).filter(Boolean);
+const nativeStockfishStatus = { configured: nativeStockfishObjects.length > 0, ready: false, error: null };
+app.get('/stockfish-worker.js', (req, res) => {
+  if (!browserStockfishJsUrl || !browserStockfishWasmUrl) {
+    return res.status(503).type('text').send('Browser Stockfish Storage is not configured. Set SUPABASE_URL and STOCKFISH_STORAGE_BUCKET.');
+  }
+  res.set('Cache-Control', 'no-store');
+  res.type('application/javascript').send(`
+    // This bootstrap is hosted on the Zugzwang origin so Worker() is same-origin.
+    // Stockfish's JS is loaded from the public Supabase bucket; locateFile keeps
+    // its WASM download pointed at the matching Storage object.
+    var Module = {
+      locateFile: function (file, prefix) {
+        if (/\.wasm(?:$|[?#])/.test(file)) return ${JSON.stringify(browserStockfishWasmUrl)};
+        return (prefix || '') + file;
+      }
+    };
+    try {
+      importScripts(${JSON.stringify(browserStockfishJsUrl)});
+    } catch (error) {
+      postMessage('stockfish-bootstrap-error: ' + (error && error.message ? error.message : String(error)));
+    }
+  `);
+});
+
+app.get('/api/health', async (req, res) => {
+  const urlsConfigured = !!(browserStockfishJsUrl && browserStockfishWasmUrl);
+  const checks = await Promise.all([browserStockfishJsUrl, browserStockfishWasmUrl].map(async (url) => {
+    if (!url) return false;
+    try {
+      const response = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(5000) });
+      return response.ok;
+    } catch { return false; }
+  }));
+  const engineJs = checks[0], engineWasm = checks[1];
+  const browserStockfishOk = urlsConfigured && engineJs && engineWasm;
+  res.status(browserStockfishOk ? 200 : 503).json({
+    ok: browserStockfishOk,
     supabaseConfigured: !!db,
-    browserStockfish: { js: engineJs, wasm: engineWasm }
+    browserStockfish: {
+      source: 'supabase-storage', bucket: stockfishBucket,
+      configured: urlsConfigured, js: engineJs, wasm: engineWasm
+    },
+    nativeStockfish: {
+      source: nativeStockfishStatus.configured ? 'private-supabase-storage' : 'STOCKFISH_PATH',
+      configured: nativeStockfishStatus.configured,
+      parts: nativeStockfishObjects.length,
+      ready: nativeStockfishStatus.ready,
+      error: nativeStockfishStatus.error
+    }
   });
 });
 
@@ -1271,7 +1320,47 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 
+async function* nativeStockfishGzipParts() {
+  for (const objectName of nativeStockfishObjects) {
+    const { data, error } = await db.storage.from(nativeStockfishBucket).createSignedUrl(objectName, 300);
+    if (error || !data?.signedUrl) {
+      throw new Error(`Could not create a download URL for ${objectName}: ${error?.message || 'no signed URL returned'}`);
+    }
+    const downloadUrl = new URL(data.signedUrl, process.env.SUPABASE_URL).toString();
+    const response = await fetch(downloadUrl, { signal: AbortSignal.timeout(180000) });
+    if (!response.ok || !response.body) {
+      throw new Error(`Private Storage download failed for ${objectName} (HTTP ${response.status}).`);
+    }
+    // The uploaded objects are adjacent byte ranges of one gzip stream. Yielding
+    // their bodies sequentially reconstructs the exact original gzip byte stream.
+    for await (const chunk of Readable.fromWeb(response.body)) yield chunk;
+  }
+}
+
+async function loadNativeStockfishFromStorage() {
+  if (!nativeStockfishObjects.length) return;
+  if (!db) throw new Error('Supabase service-role client is not configured.');
+
+  const dir = path.join(os.tmpdir(), 'zugzwang-engine');
+  await fs.promises.mkdir(dir, { recursive: true });
+  const executable = path.join(dir, 'stockfish');
+  await pipeline(Readable.from(nativeStockfishGzipParts()), createGunzip(), fs.createWriteStream(executable, { mode: 0o700 }));
+  await fs.promises.chmod(executable, 0o755);
+
+  stockfish.command = executable;
+  await stockfish.start(); // Validate the Linux binary and complete its UCI handshake before marking it ready.
+  nativeStockfishStatus.ready = true;
+  nativeStockfishStatus.error = null;
+  console.log(`Native Stockfish ready from private Supabase Storage (${nativeStockfishBucket}/${nativeStockfishObjects.join(', ')}): ${stockfish.name}`);
+}
+
 async function boot() {
+  try { await loadNativeStockfishFromStorage(); }
+  catch (error) {
+    nativeStockfishStatus.error = error.message || String(error);
+    console.error('Native Stockfish Storage initialization failed:', nativeStockfishStatus.error);
+    console.warn('Server will continue, but native-engine anti-cheat review will be unavailable until the binary is configured correctly.');
+  }
   try { await restoreActiveTournaments(); }
   catch (error) { console.error('Tournament recovery initialization failed:', error.message); }
   server.listen(PORT, () => console.log(`Chess server on http://localhost:${PORT}`));

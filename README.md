@@ -64,7 +64,19 @@ The piece set in `pieces/` is CC0 (see `pieces/LICENSE.txt`).
 
 ## Browser Stockfish: play vs computer and analysis
 
-The `/computer.html` page runs Stockfish.js 19 in a same-origin Web Worker using the single-threaded lite WASM build. Install dependencies with `npm install`; the server exposes the installed `stockfish` package under `/vendor/stockfish`. The matching JavaScript loader and `.wasm` file must be present in the package root. No engine computation is sent to the server. Stockfish.js is GPL-3.0; keep its license and source notices with distributions that include it. The page provides local play, position analysis and a move-by-move review with !! Brilliant, ! Great, ★ Excellent, ?! Inaccuracy, ? Mistake and ?? Blunder labels. The labels are heuristic centipawn-loss bands, not official Chess.com classifications.
+The `/computer.html` page runs Stockfish.js 19 in a same-origin Web Worker using the single-threaded lite WASM build. The engine files are hosted in a **public Supabase Storage bucket** so Render does not need to serve the WASM file. The bucket contains only public client-side engine assets; never upload `.env`, the native anti-cheat executable, or any Supabase secret key to it.
+
+1. Install dependencies locally with `npm install`.
+2. Put `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` in your local `.env`. The existing backend also uses the service key server-side; never place it in browser code or commit it to Git.
+3. Set `STOCKFISH_STORAGE_BUCKET=stockfish` in `.env` or keep the default.
+4. Run `npm run upload:stockfish`. The script creates the public bucket if it does not exist, uses the package's documented `findEngine('lite-single')` resolver to locate the actual JS file (the npm package may store it below its root), then uploads that JS file and its matching WASM file with the correct content types and long-lived cache headers. If the bucket already exists but is private, the script attempts to make it public.
+5. Set `STOCKFISH_STORAGE_BUCKET=stockfish` in your Render environment variables and redeploy. `SUPABASE_URL` must already be set on Render.
+
+The web page creates `/stockfish-worker.js` on the Zugzwang origin. That bootstrap imports the JS loader from the public Storage URL and uses Emscripten's `locateFile` hook to fetch the matching WASM object directly from Storage. This avoids trying to construct a Worker directly from a cross-origin URL. The Storage object responses must be publicly readable and permit cross-origin requests from your website. If you use a restrictive Content-Security-Policy, allow `https://YOUR-PROJECT.supabase.co` in `script-src`/`connect-src` as applicable.
+
+No browser engine computation is sent to the server. Server-side anti-cheat analysis uses a separate native Stockfish executable. You can keep it at `STOCKFISH_PATH`, or upload a **Linux ELF** executable to a private bucket: run `npm run upload:stockfish-native -- ./path/to/linux/stockfish`. The script gzip-compresses it and splits the gzip byte stream into Storage objects no larger than `STOCKFISH_NATIVE_PART_SIZE_MB` (45 MiB by default, below Supabase Free's 50 MB per-file cap). It uploads objects such as `stockfish-linux-x64.gz.part-001` and `.part-002`. After the script prints `STOCKFISH_NATIVE_OBJECTS`, set that comma-separated value and `STOCKFISH_NATIVE_BUCKET=stockfish-native` in Render only (leave these unset in local Windows `.env` files). At startup the server downloads each private object in order, reconstructs the original gzip stream, decompresses the executable into its temporary directory, sets executable permissions, and validates its UCI handshake. The prior single-object `STOCKFISH_NATIVE_OBJECT` variable remains supported for backwards compatibility. Never use the Windows `.exe` on Render, which runs Linux, and never make the native-engine bucket public.
+
+Supabase Free projects currently have a 50 MB maximum per uploaded file. The native uploader uses 45 MiB parts by default to leave room below that per-object cap. Pro and higher plans can configure larger limits if desired. (See [Supabase upload limits](https://supabase.com/docs/guides/storage/uploads/file-limits).) Stockfish.js is GPL-3.0; retain its license and source notices with distributions that include it. The page provides local play, position analysis and move-by-move review with !! Brilliant, ! Great, ★ Excellent, ?! Inaccuracy, ? Mistake and ?? Blunder labels. The labels are heuristic centipawn-loss bands, not official Chess.com classifications.
 
 ## Puzzles (Lichess CC0)
 
@@ -80,7 +92,7 @@ The importer streams the compressed CSV and upserts batches into Supabase; it do
 
 ### Engine assets / deployment check
 
-After `npm install`, verify that `node_modules/stockfish/stockfish-19-lite-single.js` and its matching `.wasm` file exist. The lite single-threaded build avoids cross-origin-isolation headers. If the package version changes its asset filenames or directory layout, update the worker URL in `computer.html` and static mount in `server.js` together. Browser pages require HTTPS (or localhost) for WebAssembly Workers.
+After uploading, open `/api/health` on the deployed site. The response should show `browserStockfish.source: "supabase-storage"` and both `browserStockfish.js` and `browserStockfish.wasm` as `true`. If either is false, check the bucket name, public access, exact object filenames and service-side environment variable. The computer page queues moves made during startup and displays import/WASM errors rather than silently dropping engine requests.
 
 ## Fixing Supabase 500s after deploying
 
@@ -88,8 +100,8 @@ If `/api/friends`, `/api/mod/reports`, `/api/mod/integrity`, `/api/puzzles/rando
 
 After the migration succeeds, redeploy/restart the Render service so the server starts with the expected `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`. The key must be the backend service-role/secret key, never the anon/publishable key. Do not expose it in browser config or commit it. The migration query at the bottom prints a per-table permissions check.
 
-Open `/api/health` on the deployed site to verify that both browser Stockfish files are present. The response should show `browserStockfish.js: true` and `browserStockfish.wasm: true`. If either is false, make sure `stockfish` remains in `dependencies` (not `devDependencies`) and the Render build runs `npm install`/`npm ci`.
+Open `/api/health` on the deployed site to verify that both browser Stockfish files are reachable from Supabase Storage. The response should show `browserStockfish.source: "supabase-storage"` and `browserStockfish.js: true`, `browserStockfish.wasm: true`.
 
-The computer page now queues a move made while Stockfish is still downloading/initializing, instead of silently dropping the engine request. It also displays worker/WASM startup errors on the page. Stockfish 19's documented browser build is `stockfish-19-lite-single.js` with the matching `stockfish-19-lite-single.wasm` file served side by side.
+The computer page queues a move made while Stockfish is still downloading/initializing, instead of silently dropping the engine request. It also displays worker/Storage/WASM startup errors on the page. The uploaded pair must be `stockfish-19-lite-single.js` and its matching `stockfish-19-lite-single.wasm` from the same `stockfish@19.0.1` package version.
 #   c h e s s . c o m - a l t e r n a t i v e  
  
