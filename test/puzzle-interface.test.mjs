@@ -64,9 +64,9 @@ test('SQL completion is per-player, idempotent and withholds points after a wron
 
 
 test('solution arrow is slightly smaller and keeps its move direction clear', () => {
-  assert.match(board, /stroke-width', '15'/);
-  assert.match(board, /markerWidth', '6'/);
-  assert.match(board, /markerHeight', '6'/);
+  assert.match(board, /stroke-width', '9'/);
+  assert.match(board, /markerWidth', '4\.5'/);
+  assert.match(board, /markerHeight', '4\.5'/);
 });
 
 test('successful puzzle rating rolls upward before the next puzzle loads automatically', () => {
@@ -78,4 +78,12 @@ test('successful puzzle rating rolls upward before the next puzzle loads automat
   assert.match(page, /\$\('range'\)\.disabled = phase === 'loading' \|\| savingResult/);
   assert.match(page, /aria-label',? `\$\{rating\.toLocaleString\(\)\} puzzle rating`/);
   assert.match(page, /Next puzzle · \$\{seconds\}s/);
+});
+
+
+test('each correct player move restores the Hint button for the next puzzle step', () => {
+  assert.match(page, /lastMove = \[played\.from, played\.to\]; step\+\+;[\s\S]*?hintUsed = false;/);
+  assert.match(page, /step = 1; playerColor = chess\.turn\(\); lastMove = \[forced\.from, forced\.to\];[\s\S]*?hintUsed = false;/);
+  assert.ok(page.includes("$('hint').classList.toggle('hidden', hintUsed || !playing)"));
+  assert.ok(page.includes("$('solution').classList.toggle('hidden', !hintUsed || !playing)"));
 });

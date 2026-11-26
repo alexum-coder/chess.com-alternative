@@ -457,7 +457,7 @@
         updateControls(); render(); return;
       }
       step = 1; playerColor = chess.turn(); lastMove = [forced.from, forced.to];
-      selected = null; targets = []; hintSquare = null; solutionArrow = null; phase = 'playing';
+      hintUsed = false; selected = null; targets = []; hintSquare = null; solutionArrow = null; phase = 'playing';
       setStatus('Your move', 'Take another look. A correct solve after a retry will not award rating.');
       updateControls(); render();
     }
@@ -482,6 +482,9 @@
       }
 
       lastMove = [played.from, played.to]; step++;
+      // Hint/solution is scoped to the current player move. Reset it after each correct move
+      // so multi-move puzzles offer a fresh Hint button for the next decision.
+      hintUsed = false;
       selected = null; targets = []; hintSquare = null; solutionArrow = null;
       if (step < solution.length) {
         const reply = chess.move(uciMove(solution[step]));
