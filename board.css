@@ -167,3 +167,24 @@
 @media (max-width: 520px) {
   .zz-board .sq.puzzle-hint-square { outline-width: 3px; }
 }
+
+/* Native drag-and-drop for mouse, pen and touch on every interactive board. */
+.zz-board { touch-action: none; -webkit-user-select: none; user-select: none; }
+.zz-board .sq { touch-action: none; }
+.zz-board .sq.drag-origin .pc { opacity: .16; }
+.zz-board .sq.pre-projection-from .pc { opacity: .22; }
+.zz-board .sq.pre-projection-to .pc:not(.pre-projection-piece) { opacity: .18; }
+.zz-board .pc.pre-projection-piece { opacity: .66; filter: drop-shadow(0 2px 2px rgba(0,0,0,.5)); }
+.zz-board .zz-drag-piece {
+  position: absolute;
+  z-index: 30;
+  display: none;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  filter: drop-shadow(0 7px 5px rgba(0,0,0,.45));
+}
+.zz-board .zz-drag-piece .pc { width: 100%; height: 100%; object-fit: contain; }
+
+
+.zz-board .sq.has-piece { cursor: grab; }
+.zz-board .sq.drag-origin { cursor: grabbing; }

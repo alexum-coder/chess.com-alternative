@@ -144,5 +144,9 @@ Move explanations are written for casual players: they describe what moved or wa
 - Clean first-time puzzle solves animate the private puzzle rating with rolling digits and a floating rating gain.
 - After the result and rating animation, the next puzzle loads automatically; the Next puzzle button can also be used to skip the countdown.
 - Retry and failed-attempt reward rules are unchanged.
+
+## Board drag and chained premoves
+
+All moveable shared boards support mouse, pen and touch drag-and-drop, while preserving click and keyboard selection. Online games also support a queue of up to eight speculative premoves while waiting for the opponent. The projected position is shown ghosted on the board; each queued move is revalidated against the real position before submission, and moves made impossible by the opponent's reply are discarded safely. The queue can be cancelled with the cancel button, Escape, or right-click.
 #   c h e s s . c o m - a l t e r n a t i v e  
  

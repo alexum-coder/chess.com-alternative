@@ -91,6 +91,8 @@
   .prebar { display: flex; align-items: center; gap: 10px; margin: -4px 0 12px; padding: 6px 10px; border-radius: 8px;
     background: rgba(86,140,255,.14); border: 1px solid rgba(86,140,255,.45); font-size: .9rem; }
   .prebar button { margin-left: auto; padding: 4px 10px; font-size: .85rem; white-space: nowrap; }
+  #preText { min-width: 0; flex: 1; line-height: 1.4; overflow-wrap: anywhere; }
+  @media (max-width:560px) { .prebar { align-items: flex-start; flex-wrap: wrap; } .prebar button { margin-left: auto; } }
   .switch { display: flex; align-items: center; gap: 10px; color: var(--ink); font-size: 1rem; margin: 0; cursor: pointer; }
   .switch input { width: 1.15rem; height: 1.15rem; padding: 0; accent-color: var(--accent); cursor: pointer; }
   .hint { color: var(--muted); font-size: .8rem; margin: 8px 0 0; }
@@ -243,7 +245,7 @@
     <div class="panel">
       <h2>Settings</h2>
       <label class="switch"><input type="checkbox" id="soundToggle" checked> Sound effects</label>
-      <p class="hint">While waiting for your opponent, click a piece and a square to queue a premove. Right-click, press Esc or tap an empty square to cancel it.</p>
+      <p class="hint">While waiting for your opponent, drag a piece to queue a premove. You can queue several moves in a row. Right-click, press Esc or Cancel premove to clear the queue.</p>
     </div>
 
     <div class="panel" id="friendsPanel">
@@ -722,7 +724,7 @@ socket.on('waiting', (key) => veil({ title: 'Finding an opponent', sub: `Time co
 socket.on('start', (s) => {
   game = { id: s.gameId, color: s.color, chess: new Chess(s.fen), clock: s.clock, turn: s.turn || 'w', over: false,
     recovering: !!s.recovering, stamp: Date.now() - (s.elapsed || 0), moves: s.moves || [], last: s.last || null, white: s.white, black: s.black,
-    pre: null, sending: false, drawBy: s.draw || null, drawLock: s.drawLockedUntil || 0 };
+    preMoves: [], sending: false, drawBy: s.draw || null, drawLock: s.drawLockedUntil || 0 };
   selected = null; targets = []; closePromo();
   veil(null);
   $('#lobby').classList.add('hidden'); $('#gamePanel').classList.remove('hidden'); $('#actions').classList.remove('hidden');
@@ -787,7 +789,7 @@ socket.on('opp', (e) => { $('#oppStatus').textContent = e.online ? '' : `Disconn
 socket.on('over', (o) => {
   if (!game) return;
   game.over = true; clearInterval(tick);
-  game.pre = null; game.drawBy = null; selected = null; targets = []; closePromo();
+  game.preMoves = []; game.drawBy = null; selected = null; targets = []; closePromo();
   if (o.reason !== 'checkmate') Sound.play('end'); // checkmate already played its own sound with the final move
   const white = game.color === 'w';
   const won = (o.result === '1-0' && white) || (o.result === '0-1' && !white);
@@ -859,7 +861,9 @@ function render() {
     lastMove: game?.last || [],
     inCheck,
     turn,
-    premove: game?.pre || null,
+    premove: game?.preMoves?.[0] || null,
+    premovePosition: game && game.chess.turn() !== game.color && game.preMoves?.length ? getPremovePlanningChess().board() : null,
+    dragPosition: game && game.chess.turn() !== game.color && game.preMoves?.length ? getPremovePlanningChess().board() : grid,
     premoveTargets: !!game && game.chess.turn() !== game.color,
     interactive: true
   });
@@ -919,35 +923,64 @@ function askPromotion(from, to, done) {
   col.firstChild.focus();
 }
 
-/* ---------- moving and premoves ---------- */
-const isPromotion = (from, to) => {
-  const p = game.chess.get(from);
+/* ---------- moving and chained premoves ---------- */
+const isPromotion = (from, to, position = game?.chess) => {
+  const p = position?.get(from);
   return !!p && p.type === 'p' && p.color === game.color && to[1] === (p.color === 'w' ? '8' : '1');
 };
-function sendMove(from, to, promotion) {
+function sendMove(from, to, promotion, queuedPremove = null) {
+  if (!game || game.sending || game.over) return;
   game.sending = true;
   socket.emit('move', { gameId: game.id, from, to, promotion }, (res) => {
-    if (game && !(res && res.ok)) { game.sending = false; render(); } // rejected: let the player try again
+    if (!game) return;
+    if (!(res && res.ok)) {
+      game.sending = false;
+      if (queuedPremove) game.preMoves.unshift(queuedPremove);
+      render();
+    }
   });
 }
-// Squares a piece could reach if the position stays as it is now. Deliberately loose (own pieces count as
-// targets, so you can queue a recapture); the move is checked for real when it is time to play it.
-function premoveTargets(from) {
-  const p = game.chess.get(from); if (!p) return [];
+// Build a speculative board from the live position and the queued moves. For planning only,
+// each queued move is applied as if the opponent's intervening move had passed; every queued
+// move is revalidated against the real position before it is sent.
+function getPremovePlanningChess() {
+  if (!game) return idleChess;
+  let planning = new Chess(game.chess.fen());
+  for (const pre of game.preMoves || []) {
+    const fields = planning.fen().split(' ');
+    fields[1] = game.color;
+    fields[3] = '-'; // an opponent reply would expire any en-passant right
+    planning = new Chess(fields.join(' '));
+    const move = planning.moves({ square: pre.from, verbose: true }).find((candidate) =>
+      candidate.to === pre.to && (!candidate.promotion || candidate.promotion === (pre.promotion || 'q'))
+    );
+    if (!move) break;
+    try { planning.move({ from: pre.from, to: pre.to, promotion: pre.promotion || 'q' }); }
+    catch { break; }
+  }
+  const fields = planning.fen().split(' ');
+  fields[1] = game.color;
+  fields[3] = '-';
+  return new Chess(fields.join(' '));
+}
+// Loose geometric targets deliberately allow a queued move to be planned before the opponent
+// replies. A move is checked with chess.js in the speculative position and again when executed.
+function premoveTargets(from, position = game.chess) {
+  const p = position.get(from); if (!p) return [];
   const f = FILES.indexOf(from[0]), r = +from[1], res = new Set();
   const add = (cf, cr) => { if (cf < 0 || cf > 7 || cr < 1 || cr > 8) return false; res.add(FILES[cf] + cr); return true; };
-  const ray = (df, dr) => { for (let i = 1; add(f + df * i, r + dr * i); i++) if (game.chess.get(FILES[f + df * i] + (r + dr * i))) break; };
+  const ray = (df, dr) => { for (let i = 1; add(f + df * i, r + dr * i); i++) if (position.get(FILES[f + df * i] + (r + dr * i))) break; };
   const KN = [[1, 2], [2, 1], [-1, 2], [-2, 1], [1, -2], [2, -1], [-1, -2], [-2, -1]];
   const ORTH = [[1, 0], [-1, 0], [0, 1], [0, -1]], DIAG = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
   if (p.type === 'n') KN.forEach(([a, b]) => add(f + a, r + b));
   else if (p.type === 'k') {
     [...ORTH, ...DIAG].forEach(([a, b]) => add(f + a, r + b));
-    if (from === (p.color === 'w' ? 'e1' : 'e8')) { add(f + 2, r); add(f - 2, r); } // castling
+    if (from === (p.color === 'w' ? 'e1' : 'e8')) { add(f + 2, r); add(f - 2, r); }
   } else if (p.type === 'p') {
     const d = p.color === 'w' ? 1 : -1;
-    if (!game.chess.get(from[0] + (r + d))) {
+    if (!position.get(from[0] + (r + d))) {
       add(f, r + d);
-      if (r === (p.color === 'w' ? 2 : 7) && !game.chess.get(from[0] + (r + 2 * d))) add(f, r + 2 * d);
+      if (r === (p.color === 'w' ? 2 : 7) && !position.get(from[0] + (r + 2 * d))) add(f, r + 2 * d);
     }
     add(f - 1, r + d); add(f + 1, r + d);
   } else {
@@ -958,45 +991,70 @@ function premoveTargets(from) {
   return [...res];
 }
 function setPremove(from, to, promotion) {
-  game.pre = { from, to, promotion: promotion || null };
+  const planning = getPremovePlanningChess();
+  const legal = planning.moves({ square: from, verbose: true }).find((move) =>
+    move.to === to && (!move.promotion || move.promotion === (promotion || 'q'))
+  );
+  if (!legal) {
+    $('#drawNote').textContent = `That move cannot be queued from ${from} to ${to}. Try a different premove.`;
+    selected = null; targets = []; render(); return;
+  }
+  if (game.preMoves.length >= 8) {
+    $('#drawNote').textContent = 'You can queue up to eight premoves.';
+    selected = null; targets = []; render(); return;
+  }
+  game.preMoves.push({ from, to, promotion: promotion || null });
   selected = null; targets = []; render();
 }
 function cancelPremove() {
-  if (!game || !game.pre) return;
-  game.pre = null; render();
+  if (!game || !game.preMoves?.length) return;
+  game.preMoves = []; selected = null; targets = []; render();
 }
-// Called when the opponent's move arrives: play the queued move if it is legal now, otherwise drop it.
+// Run the next queued premove as soon as it is our turn. Each move is rechecked on the real
+// position; if the opponent changed the board so it no longer works, discard that move and
+// inspect the next queued idea rather than sending an illegal move to the server.
 function runPremove() {
-  const pre = game.pre; game.pre = null;
-  if (!pre || game.over || game.chess.turn() !== game.color) return;
-  const legal = game.chess.moves({ square: pre.from, verbose: true })
-    .some((m) => m.to === pre.to && (!m.promotion || m.promotion === (pre.promotion || 'q')));
-  if (legal) sendMove(pre.from, pre.to, pre.promotion || 'q');
-  else $('#drawNote').textContent = 'Premove cancelled: it was no longer legal.';
+  if (!game || game.over || game.sending || game.chess.turn() !== game.color) return;
+  while (game.preMoves?.length) {
+    const pre = game.preMoves.shift();
+    const legal = game.chess.moves({ square: pre.from, verbose: true }).some((move) =>
+      move.to === pre.to && (!move.promotion || move.promotion === (pre.promotion || 'q'))
+    );
+    if (!legal) {
+      $('#drawNote').textContent = `Premove ${pre.from} → ${pre.to} was cancelled because the position changed.`;
+      continue;
+    }
+    selected = null; targets = [];
+    sendMove(pre.from, pre.to, pre.promotion || 'q', pre);
+    return;
+  }
+  render();
 }
 function paintPremove() {
-  const bar = $('#preBar'), pre = game && !game.over && game.pre;
-  bar.classList.toggle('hidden', !pre);
-  if (pre) $('#preText').textContent = `Premove: ${pre.from} → ${pre.to}`;
+  const bar = $('#preBar'), queue = game && !game.over ? (game.preMoves || []) : [];
+  bar.classList.toggle('hidden', !queue.length);
+  if (queue.length) {
+    $('#preText').textContent = queue.map((pre, index) => `${index + 1}. ${pre.from} → ${pre.to}`).join('   ·   ');
+  }
 }
 
 function onSquare(sq) {
   if (!game || game.over || game.sending || promoOpen) return;
   const myTurn = game.chess.turn() === game.color;
-  const piece = game.chess.get(sq);
+  const position = myTurn ? game.chess : getPremovePlanningChess();
+  const piece = position.get(sq);
   if (selected && targets.includes(sq)) {
     const from = selected;
     const go = (promo) => (myTurn ? sendMove(from, sq, promo) : setPremove(from, sq, promo));
     selected = null; targets = [];
-    if (isPromotion(from, sq)) { render(); return askPromotion(from, sq, go); }
+    if (isPromotion(from, sq, position)) { render(); return askPromotion(from, sq, go); }
     return go();
   }
   if (piece && piece.color === game.color) {
     selected = sq;
-    targets = myTurn ? game.chess.moves({ square: sq, verbose: true }).map((m) => m.to) : premoveTargets(sq);
+    targets = myTurn ? game.chess.moves({ square: sq, verbose: true }).map((m) => m.to) : premoveTargets(sq, position);
   } else {
     selected = null; targets = [];
-    if (!myTurn && game.pre) game.pre = null; // tapping an empty square cancels a queued premove
   }
   render();
 }
@@ -1005,7 +1063,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || !game) return;
   if (promoOpen) { closePromo(); render(); } else if (selected) { selected = null; targets = []; render(); } else cancelPremove();
 });
-$('#board').addEventListener('contextmenu', (e) => { e.preventDefault(); if (game) { selected = null; targets = []; game.pre = null; render(); } });
+$('#board').addEventListener('contextmenu', (e) => { e.preventDefault(); if (game) { selected = null; targets = []; game.preMoves = []; render(); } });
 render(); paintPlayers();
 </script>
 </body>

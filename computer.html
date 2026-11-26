@@ -181,7 +181,7 @@
         position:view.board(), orientation:'white',
         selected:reviewPreview ? null : selected,
         targets:reviewPreview ? [] : targets,
-        lastMove:viewLastMove, inCheck:view.isCheck(), turn:view.turn()
+        lastMove:viewLastMove, inCheck:view.isCheck(), turn:view.turn(), interactive:!reviewPreview
       });
       const history = chess.history();
       $('moves').textContent = history.map((move, index) => (index % 2 === 0 ? Math.floor(index / 2 + 1) + '. ' : '') + move).join('  ');

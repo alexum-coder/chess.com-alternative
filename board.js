@@ -9,6 +9,113 @@ export class ZugzwangBoard {
     this.root.classList.add('zz-board');
     this.root.setAttribute('role', 'grid');
     this.root.setAttribute('aria-label', 'Chess board');
+    this.dragPosition = null;
+    this.pointerState = null;
+    this.suppressPointerClick = false;
+    this.dragLayer = document.createElement('div');
+    this.dragLayer.className = 'zz-drag-piece';
+    this.dragLayer.setAttribute('aria-hidden', 'true');
+
+    // Pointer events support mouse, pen and touch. Click and keyboard selection remain
+    // available as accessible alternatives.
+    this.root.addEventListener('pointerdown', (event) => this.#pointerDown(event));
+    this.root.addEventListener('pointermove', (event) => this.#pointerMove(event));
+    this.root.addEventListener('pointerup', (event) => this.#pointerUp(event));
+    this.root.addEventListener('pointercancel', () => this.#clearPointer());
+    this.root.addEventListener('click', (event) => {
+      if (this.suppressPointerClick) {
+        this.suppressPointerClick = false;
+        event.preventDefault(); event.stopPropagation(); return;
+      }
+      const square = event.target.closest?.('.sq[data-sq]');
+      if (square && this.root.contains(square)) this.onSquare(square.dataset.sq);
+    });
+    this.root.addEventListener('keydown', (event) => {
+      this.suppressPointerClick = false;
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      const square = event.target.closest?.('.sq[data-sq]');
+      if (square && this.root.contains(square)) {
+        event.preventDefault(); this.onSquare(square.dataset.sq);
+      }
+    });
+  }
+
+  #pieceAt(position, square) {
+    if (!Array.isArray(position) || !/^[a-h][1-8]$/.test(square || '')) return null;
+    return position[8 - Number(square[1])]?.[FILES.indexOf(square[0])] || null;
+  }
+
+  #pointerDown(event) {
+    this.suppressPointerClick = false;
+    if (this.interactive === false) return;
+    if (event.button != null && event.button !== 0) return;
+    if (this.pointerState) return;
+    const square = event.target.closest?.('.sq[data-sq]');
+    if (!square || !this.root.contains(square)) return;
+    const piece = this.#pieceAt(this.dragPosition, square.dataset.sq);
+    if (!piece) return;
+    this.pointerState = {
+      id:event.pointerId, from:square.dataset.sq, piece,
+      startX:event.clientX, startY:event.clientY, didDrag:false
+    };
+    try { this.root.setPointerCapture(event.pointerId); } catch { /* Pointer capture may be unavailable in older browsers. */ }
+    event.preventDefault();
+  }
+
+  #pointerMove(event) {
+    const drag = this.pointerState;
+    if (!drag || drag.id !== event.pointerId) return;
+    const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
+    if (!drag.didDrag && distance < 6) return;
+    if (!drag.didDrag) {
+      drag.didDrag = true;
+      this.onSquare(drag.from);
+    }
+    this.#updateDragLayer(event.clientX, event.clientY);
+    event.preventDefault();
+  }
+
+  #pointerUp(event) {
+    const drag = this.pointerState;
+    if (!drag || drag.id !== event.pointerId) return;
+    if (drag.didDrag) {
+      const destination = document.elementFromPoint(event.clientX, event.clientY)?.closest?.('.sq[data-sq]');
+      if (destination && this.root.contains(destination) && destination.dataset.sq !== drag.from) {
+        this.onSquare(destination.dataset.sq);
+      }
+    } else {
+      // Treat a short pointer press as a normal piece selection. Suppress the synthetic
+      // click fired by the browser after pointerup to avoid double-selecting/toggling.
+      this.onSquare(drag.from);
+    }
+    this.suppressPointerClick = true;
+    this.#clearPointer();
+    event.preventDefault();
+  }
+
+  #clearPointer() {
+    this.pointerState = null;
+    this.dragLayer.style.display = 'none';
+    this.dragLayer.dataset.piece = '';
+    this.root.querySelectorAll('.sq.drag-origin').forEach((square) => square.classList.remove('drag-origin'));
+  }
+
+  #updateDragLayer(clientX, clientY) {
+    const drag = this.pointerState;
+    if (!drag?.didDrag) return;
+    const rect = this.root.getBoundingClientRect();
+    const size = rect.width / 8;
+    if (!this.dragLayer.firstChild || this.dragLayer.dataset.piece !== `${drag.piece.color}${drag.piece.type}`) {
+      this.dragLayer.replaceChildren(this.#piece(drag.piece.color, drag.piece.type));
+      this.dragLayer.dataset.piece = `${drag.piece.color}${drag.piece.type}`;
+    }
+    this.dragLayer.style.display = 'block';
+    this.dragLayer.style.left = `${clientX - rect.left}px`;
+    this.dragLayer.style.top = `${clientY - rect.top}px`;
+    this.dragLayer.style.width = `${size}px`;
+    this.dragLayer.style.height = `${size}px`;
+    const origin = this.root.querySelector(`.sq[data-sq="${drag.from}"]`);
+    origin?.classList.add('drag-origin');
   }
 
   render({
@@ -24,6 +131,8 @@ export class ZugzwangBoard {
     moveAnnotation = null,
     hintSquare = null,
     solutionArrow = null,
+    premovePosition = null,
+    dragPosition = null,
     interactive = true
   } = {}) {
     if (!Array.isArray(position) || position.length !== 8) {
@@ -31,8 +140,10 @@ export class ZugzwangBoard {
     }
 
     const flip = orientation === 'black';
+    this.interactive = interactive;
     const targetSet = new Set(targets || []);
     const lastSet = new Set(lastMove || []);
+    this.dragPosition = dragPosition || premovePosition || position;
     const frag = document.createDocumentFragment();
 
     for (let displayRow = 0; displayRow < 8; displayRow++) {
@@ -41,12 +152,18 @@ export class ZugzwangBoard {
         const col = flip ? 7 - displayCol : displayCol;
         const square = FILES[col] + (8 - row);
         const piece = position[row][col];
+        const projectedPiece = premovePosition ? premovePosition[row]?.[col] || null : piece;
+        const changedByPremove = !!premovePosition && (
+          (piece?.color || null) !== (projectedPiece?.color || null) ||
+          (piece?.type || null) !== (projectedPiece?.type || null)
+        );
         const el = document.createElement('div');
         el.className = 'sq ' + ((row + col) % 2 ? 'd' : 'l');
         el.dataset.sq = square;
         el.tabIndex = interactive ? 0 : -1;
         el.setAttribute('role', 'gridcell');
         el.setAttribute('aria-label', square + (piece ? ` ${piece.color === 'w' ? 'White' : 'Black'} ${piece.type}` : ' empty'));
+        if (piece || projectedPiece) el.classList.add('has-piece');
 
         if (lastSet.has(square)) el.classList.add('last');
         if (selected === square) el.classList.add('sel');
@@ -68,10 +185,15 @@ export class ZugzwangBoard {
         if (piece) el.appendChild(this.#piece(piece.color, piece.type));
         if (moveAnnotation?.to === square) el.appendChild(this.#reviewBadge(moveAnnotation));
 
-        if (premove?.to === square && premove.from) {
-          const fromRow = 8 - Number(premove.from[1]);
-          const fromCol = FILES.indexOf(premove.from[0]);
-          const mover = position[fromRow]?.[fromCol];
+        if (changedByPremove) {
+          el.classList.add(projectedPiece ? 'pre-projection-to' : 'pre-projection-from');
+          if (projectedPiece) {
+            const ghost = this.#piece(projectedPiece.color, projectedPiece.type);
+            ghost.classList.add('ghost', 'pre-projection-piece');
+            el.appendChild(ghost);
+          }
+        } else if (premove?.to === square && premove.from) {
+          const mover = this.#pieceAt(position, premove.from);
           if (mover) {
             const ghost = this.#piece(mover.color, premove.promotion || mover.type);
             ghost.classList.add('ghost');
@@ -88,19 +210,20 @@ export class ZugzwangBoard {
           rank.className = 'r'; rank.textContent = String(8 - row); el.appendChild(rank);
         }
 
-        if (interactive) {
-          el.addEventListener('click', () => this.onSquare(square));
-          el.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault(); this.onSquare(square);
-            }
-          });
+        if (!interactive) {
+          el.tabIndex = -1;
+          el.setAttribute('aria-disabled', 'true');
         }
         frag.appendChild(el);
       }
     }
     this.root.replaceChildren(frag);
     if (solutionArrow?.from && solutionArrow?.to) this.#appendSolutionArrow(solutionArrow, flip);
+    this.root.appendChild(this.dragLayer);
+    if (this.pointerState?.didDrag) {
+      const origin = this.root.querySelector(`.sq[data-sq="${this.pointerState.from}"]`);
+      origin?.classList.add('drag-origin');
+    }
   }
 
   #appendSolutionArrow({ from, to }, flip) {
