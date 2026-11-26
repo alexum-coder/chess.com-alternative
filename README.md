@@ -132,5 +132,9 @@ The review grades are intentionally more conservative than the previous build:
 - Book move annotations use brown; Best has no bright background; Miss uses light red.
 
 These are Zugzwang's own conservative review heuristics, not a reproduction of Chess.com's proprietary grading formula.
+
+## Game review explanations
+
+Move explanations are written for casual players: they describe what moved or was captured, explain the practical effect of the move in everyday language, and point out the stronger choice or opponent reply when it matters. Internal engine measurements (centipawns, WDL probabilities and expected-score loss) are kept out of the main explanation text. The review still uses the same underlying Stockfish analysis and move classifications.
 #   c h e s s . c o m - a l t e r n a t i v e  
  

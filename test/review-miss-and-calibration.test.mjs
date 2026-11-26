@@ -41,7 +41,7 @@ test('a missed major-piece capture becomes a light-red Miss grade', () => {
   row.missedOpportunity = opportunity;
   const label = classifyMoveQuality({row,before:{whiteScore:0},after:{whiteScore:0},loss:.05});
   assert.equal(label.key,'miss');
-  assert.match(explainMoveQuality({row,label,loss:.05,after:{whiteScore:0}}),/Miss:/);
+  assert.match(explainMoveQuality({row,label,loss:.05,after:{whiteScore:0}}),/Missed chance:/);
 });
 
 test('a missed forced mate becomes Miss, unless the played move keeps the mate', () => {

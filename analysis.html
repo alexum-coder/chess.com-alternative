@@ -207,7 +207,7 @@
   <script type="module">
     import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.0.0/+esm';
     import { ZugzwangBoard } from '/board.js';
-    import { parseUciInfoLine, getBookOpenings, getBookOptions, calculateMoveLoss, calculateExpectedPointsLoss, formatExpectedPointsLoss, classifyMoveQuality, detectMissedOpportunity, explainMoveQuality, formatWhiteEvaluation } from '/review-scoring.mjs';
+    import { parseUciInfoLine, getBookOpenings, getBookOptions, calculateMoveLoss, calculateExpectedPointsLoss, classifyMoveQuality, detectMissedOpportunity, explainMoveQuality, formatWhiteEvaluation } from '/review-scoring.mjs';
     const $ = (id) => document.getElementById(id);
     const params = new URLSearchParams(location.search);
     const gameId = params.get('id');
@@ -355,10 +355,10 @@
       const replyMove = moveFromUci(row.after, after.bestMove);
       const replyCapturesMovedPiece = Boolean(replyMove?.captured && replyMove.to === row.move.to);
       let replyTacticalText = '';
-      if (replyMove?.san?.includes('#')) replyTacticalText = `The opponent's best reply ${replySan} is checkmate.`;
-      else if (replyCapturesMovedPiece) replyTacticalText = `The opponent's best reply ${replySan} captures your ${row.move.piece === 'p' ? 'pawn' : ({n:'knight',b:'bishop',r:'rook',q:'queen',k:'king'})[row.move.piece] || 'piece'}.`;
-      else if (replyMove?.captured) replyTacticalText = `The opponent's best reply ${replySan} wins your ${({p:'pawn',n:'knight',b:'bishop',r:'rook',q:'queen',k:'king'})[replyMove.captured] || 'piece'}.`;
-      else if (replyMove?.san?.includes('+')) replyTacticalText = `The opponent's best reply ${replySan} comes with check.`;
+      if (replyMove?.san?.includes('#')) replyTacticalText = 'That checkmates your king.';
+      else if (replyCapturesMovedPiece) replyTacticalText = 'That takes back the piece you just moved.';
+      else if (replyMove?.captured) replyTacticalText = `That wins your ${({p:'pawn',n:'knight',b:'bishop',r:'rook',q:'queen',k:'king'})[replyMove.captured] || 'piece'}.`;
+      else if (replyMove?.san?.includes('+')) replyTacticalText = 'That puts your king in check.';
       return explainMoveQuality({ row, label, loss:expectedLoss, rawPawnsLoss, bestSan, bestLineSan, replySan, after, replyCapturesMovedPiece, replyTacticalText });
     }
     // Keep classic text marks for most grades; Best, Excellent and Checkmate use inline vectors.
@@ -560,7 +560,7 @@
       if (!row) {
         icon.textContent = '';
         title.textContent = 'Starting position';
-        text.textContent = 'Choose a move to see what it achieves, what the engine recommends, and the critical reply.';
+        text.textContent = 'Pick any move to see what it does, whether it was a good choice, and what might happen next.';
         head.append(icon, title); detail.append(head, text); return;
       }
       renderReviewIcon(icon, row.label?.key || 'good');
@@ -581,19 +581,13 @@
       route.append(pieceSymbol, pieceText, routeText);
       detail.append(head, route, text);
       if (row.bestSan && row.bestSan !== row.san) {
-        const alternative = document.createElement('p'); alternative.className = 'muted'; alternative.textContent = `Better move: ${row.bestSan}`; detail.append(alternative);
+        const alternative = document.createElement('p'); alternative.className = 'muted'; alternative.textContent = `A stronger choice: ${row.bestSan}`; detail.append(alternative);
       }
       if (row.bestLineSan && row.bestSan !== row.san) {
-        const line = document.createElement('p'); line.className = 'muted'; line.textContent = `Engine's best line: ${row.bestLineSan}`; detail.append(line);
+        const line = document.createElement('p'); line.className = 'muted'; line.textContent = `One possible follow-up: ${row.bestLineSan}`; detail.append(line);
       }
       if (row.replySan && row.label?.key !== 'checkmate') {
-        const reply = document.createElement('p'); reply.className = 'muted'; reply.textContent = `Strongest reply: ${row.replySan}`; detail.append(reply);
-      }
-      if (Number.isFinite(row.loss)) {
-        const score = document.createElement('p'); score.className = 'muted';
-        const rawPart = Number.isFinite(row.rawLoss) ? ` · Eval change ${row.rawLoss.toFixed(2)} pawns` : '';
-        score.textContent = `Position ${row.evalText || '—'} · Expected-score loss ${formatExpectedPointsLoss(row.loss ?? row.expectedLoss)}${rawPart}`;
-        detail.append(score);
+        const reply = document.createElement('p'); reply.className = 'muted'; reply.textContent = `Opponent's best reply: ${row.replySan}`; detail.append(reply);
       }
     }
     function renderSummary() {

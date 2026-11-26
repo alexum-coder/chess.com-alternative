@@ -144,7 +144,7 @@ test('book explanations identify the opening variation instead of a generic grad
   const label = { key:'book' };
   const text = explainMoveQuality({ row, label });
   assert.match(text, /Ruy López, Italian Game/);
-  assert.match(text, /not a tactical brilliance grade/i);
+  assert.match(text, /well-known openings/i);
 });
 
 test('a top engine move is Best, not automatically Brilliant', () => {
@@ -178,13 +178,15 @@ test('move explanations describe central pawn moves and piece development', () =
     row:{ san:'e4', color:'w', move:{ piece:'p', from:'e2', to:'e4' } },
     label:{ key:'best' }, after:{ whiteScore:0.2 }
   });
-  assert.match(centre, /claiming space in the centre/i);
+  assert.match(centre, /push your e-pawn into the centre/i);
+  assert.doesNotMatch(centre, /expected-score|centipawn|WDL|Stockfish preferred/i);
 
   const development = explainMoveQuality({
     row:{ san:'Nf3', color:'w', move:{ piece:'n', from:'g1', to:'f3' } },
     label:{ key:'best' }, after:{ whiteScore:0.2 }
   });
-  assert.match(development, /develops the knight/i);
+  assert.match(development, /bring your knight into the game/i);
+  assert.doesNotMatch(development, /minor piece|centralises|expected-score/i);
 });
 
 test('move explanations name captures, checks, and castling accurately', () => {
@@ -192,15 +194,15 @@ test('move explanations name captures, checks, and castling accurately', () => {
     row:{ san:'Rxe8+', color:'w', move:{ piece:'r', from:'e1', to:'e8', captured:'q' } },
     label:{ key:'excellent' }, loss:0.01, after:{ whiteScore:3.2 }
   });
-  assert.match(capture, /captures the opponent’s queen on e8/i);
-  assert.match(capture, /gives check/i);
+  assert.match(capture, /takes the opponent’s queen on e8/i);
+  assert.match(capture, /puts the opponent’s king in check/i);
 
   const castle = explainMoveQuality({
     row:{ san:'O-O', color:'w', move:{ piece:'k', from:'e1', to:'g1', flags:'k' } },
     label:{ key:'best' }, after:{ whiteScore:0.3 }
   });
-  assert.match(castle, /castle kingside/i);
-  assert.doesNotMatch(castle, /moves the king from e1 to g1/i);
+  assert.match(castle, /castle on the king’s side/i);
+  assert.doesNotMatch(castle, /move your king from e1 to g1/i);
 });
 
 
@@ -240,8 +242,8 @@ test('detects a missed rook capture and labels it Miss', () => {
   const label = classifyMoveQuality({row,before,after,loss:0.08});
   assert.equal(label.key,'miss');
   const text = explainMoveQuality({row,label,loss:0.08,after});
-  assert.match(text,/Miss:/);
-  assert.match(text,/rook available to win on e8/i);
+  assert.match(text,/Missed chance:/);
+  assert.match(text,/could have won your opponent’s rook on e8/i);
 });
 
 test('detects a missed forced mate but not when the played move keeps the mating win', () => {

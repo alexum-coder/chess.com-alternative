@@ -38,9 +38,9 @@ test('a four-pawn deterioration is a blunder even when WDL loss rounds to zero',
     bestSan:'dxe5', bestLineSan:'dxe5 Qxh8 Qxd4', replySan:'Nxd2', after
   });
   assert.match(explanation, /blunder/i);
-  assert.match(explanation, /4\.00 pawns/);
-  assert.match(explanation, /WDL estimate is saturated/i);
-  assert.match(explanation, /Stockfish preferred dxe5/i);
+  assert.match(explanation, /blunder/i);
+  assert.match(explanation, /already very one-sided/i);
+  assert.match(explanation, /A stronger choice was dxe5/i);
 });
 
 test('winning queen capture keeps the queen-capture safeguard even with a large raw swing', () => {
