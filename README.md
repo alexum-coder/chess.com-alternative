@@ -148,5 +148,9 @@ Move explanations are written for casual players: they describe what moved or wa
 ## Board drag and chained premoves
 
 All moveable shared boards support mouse, pen and touch drag-and-drop, while preserving click and keyboard selection. Online games also support a queue of up to eight speculative premoves while waiting for the opponent. The projected position is shown ghosted on the board; each queued move is revalidated against the real position before submission, and moves made impossible by the opponent's reply are discarded safely. The queue can be cancelled with the cancel button, Escape, or right-click.
+
+### Computer-game premoves
+
+Play vs. Computer now supports the same chained premove queue as online games. While Stockfish is calculating Black's reply, White can queue up to eight speculative moves. The board previews the projected position and queued sequence; each move is revalidated against the actual position after every Stockfish reply before it is played. Invalidated sequences are cleared safely, and the queue can be cancelled with the button, Escape, or right-click.
 #   c h e s s . c o m - a l t e r n a t i v e  
  

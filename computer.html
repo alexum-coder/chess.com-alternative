@@ -18,6 +18,10 @@
     .tag { display:inline-block; margin-left:7px; padding:0 6px; border-radius:5px; background:#3b4a34; color:#c5e2ab; font-weight:800; }
     .eval { font-size:1.5rem; font-weight:800; }
     .hint { color:var(--muted); font-size:.88rem; }
+    .computer-premove-bar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; margin-top:10px; padding:9px 10px; border:1px solid var(--line); border-radius:8px; background:var(--panel2); color:var(--ink); font-size:.84rem; }
+    .computer-premove-bar button { padding:6px 9px; border:1px solid var(--line); border-radius:7px; background:var(--panel); color:var(--ink); font:inherit; cursor:pointer; }
+    .computer-premove-bar[hidden], #computer-premove-note:empty { display:none; }
+    #computer-premove-note { margin:7px 0 0; }
     .review-summary { display:flex; flex-wrap:wrap; align-items:center; gap:7px; margin:12px 0 14px; }
     .review-summary strong { width:100%; font-size:.92rem; }
     .review-count { display:inline-flex; align-items:center; gap:5px; padding:5px 8px; border:1px solid var(--line); border-radius:7px; font-size:.78rem; font-weight:750; }
@@ -56,9 +60,15 @@
         <button id="undo">Undo</button>
       </div>
       <div id="board" class="zz-board" aria-label="Chess board"></div>
+      <div id="computer-premove-bar" class="computer-premove-bar" hidden>
+        <span id="computer-premove-text"></span>
+        <button id="computer-premove-cancel" type="button">Cancel premoves</button>
+      </div>
+      <p id="computer-premove-note" class="hint" aria-live="polite"></p>
       <button id="return-position" hidden type="button">Return to current position</button>
       <p id="status" class="status" role="status" aria-live="polite">Loading Stockfish…</p>
       <div class="row"><button id="analyze" disabled title="Available when the game is complete">Analyze position</button><button id="review" disabled title="Available when the game is complete">Review completed game</button></div>
+      <p class="hint">Drag pieces or click a piece and destination. While Stockfish is thinking, queue up to eight premoves; they play automatically when they are legal on your turn.</p>
       <p class="hint">Engine runs locally in your browser. Stockfish's JavaScript and WebAssembly files are downloaded from Zugzwang's public Supabase Storage bucket.</p>
     </section>
     <aside class="panel">
@@ -86,6 +96,7 @@
     let ready = false, busy = false, lastEval = null, bestMove = null;
     let queuedSearch = null, pendingBotMove = false, engineFailed = false;
     let reviewRunning = false, reviewPreview = null, reviewedRows = [];
+    let computerPreMoves = [], computerPremoveMessage = '';
     const board = new ZugzwangBoard($('board'), click);
 
     function initEngine() {
@@ -93,13 +104,13 @@
         worker = new Worker('/stockfish-worker.js');
         worker.onmessage = (event) => onEngine(String(event.data));
         worker.onerror = (event) => {
-          engineFailed = true; ready = false; busy = false; queuedSearch = null;
+          engineFailed = true; ready = false; busy = false; pendingBotMove = false; queuedSearch = null;
           const detail = event.message ? ' (' + event.message + ')' : '';
           $('status').textContent = 'Stockfish failed to load' + detail + '. Check that the stockfish Storage bucket is public and both engine files return HTTP 200.';
           $('best').textContent = 'The browser engine could not start.';
         };
         worker.onmessageerror = () => {
-          engineFailed = true; ready = false; busy = false;
+          engineFailed = true; ready = false; busy = false; pendingBotMove = false;
           $('status').textContent = 'Stockfish returned an unreadable worker message. Reload the page and check the engine assets.';
         };
         worker.postMessage('uci');
@@ -118,7 +129,7 @@
     }
     function onEngine(line) {
       if (line.startsWith('stockfish-bootstrap-error:')) {
-        engineFailed = true; ready = false; busy = false; queuedSearch = null;
+        engineFailed = true; ready = false; busy = false; pendingBotMove = false; queuedSearch = null;
         $('status').textContent = 'Could not load Stockfish from Supabase Storage: ' + line.slice('stockfish-bootstrap-error:'.length).trim();
         $('best').textContent = 'Check the public bucket, object names and Storage CORS response.';
         return;
@@ -174,14 +185,147 @@
       $('review').title = complete ? 'Open the full game analysis' : 'Available only after the game is complete';
       $('review').textContent = complete ? 'Review game' : 'Review after game';
     }
+    function isComputerPremoveWindow() {
+      return !reviewPreview && !reviewRunning && !chess.isGameOver() && chess.turn() === 'b' &&
+        (pendingBotMove || !!queuedSearch?.bot);
+    }
+    // While Stockfish is thinking, plan our next move on a speculative board. Each queued
+    // move is replayed as White, with Black's intervening reply treated as an unknown turn.
+    // Every move is checked again against the real board before it is played.
+    function getComputerPremovePlanningChess() {
+      let planning = new Chess(chess.fen());
+      const asWhiteToMove = (position) => {
+        const fields = position.fen().split(' ');
+        fields[1] = 'w';
+        fields[3] = '-';
+        return new Chess(fields.join(' '));
+      };
+      planning = asWhiteToMove(planning);
+      for (const pre of computerPreMoves) {
+        const candidate = planning.moves({ square:pre.from, verbose:true }).find((move) =>
+          move.to === pre.to && (!move.promotion || move.promotion === (pre.promotion || 'q'))
+        );
+        if (!candidate) break;
+        try {
+          planning.move({ from:pre.from, to:pre.to, promotion:pre.promotion || 'q' });
+          planning = asWhiteToMove(planning);
+        } catch { break; }
+      }
+      return asWhiteToMove(planning);
+    }
+    function computerPremoveTargets(from, position) {
+      const piece = position.get(from);
+      if (!piece || piece.color !== 'w') return [];
+      const file = 'abcdefgh'.indexOf(from[0]), rank = Number(from[1]), result = new Set();
+      const add = (f, r) => { if (f >= 0 && f < 8 && r >= 1 && r <= 8) result.add('abcdefgh'[f] + r); };
+      const ray = (df, dr) => {
+        for (let step = 1; step <= 7; step++) {
+          const f = file + df * step, r = rank + dr * step;
+          if (f < 0 || f > 7 || r < 1 || r > 8) break;
+          const square = 'abcdefgh'[f] + r;
+          result.add(square);
+          if (position.get(square)) break;
+        }
+      };
+      const orthogonal = [[1,0],[-1,0],[0,1],[0,-1]];
+      const diagonal = [[1,1],[1,-1],[-1,1],[-1,-1]];
+      if (piece.type === 'n') {
+        for (const [df,dr] of [[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]]) add(file+df,rank+dr);
+      } else if (piece.type === 'k') {
+        [...orthogonal,...diagonal].forEach(([df,dr]) => add(file+df,rank+dr));
+        if (from === 'e1') { add(file+2,rank); add(file-2,rank); }
+      } else if (piece.type === 'p') {
+        const direction = 1;
+        add(file,rank+direction);
+        if (rank === 2) add(file,rank+2);
+        add(file-1,rank+direction); add(file+1,rank+direction);
+      } else {
+        if (piece.type !== 'b') orthogonal.forEach(([df,dr]) => ray(df,dr));
+        if (piece.type !== 'r') diagonal.forEach(([df,dr]) => ray(df,dr));
+      }
+      result.delete(from);
+      return [...result];
+    }
+    function setComputerPremove(from, to, promotion = 'q') {
+      const planning = getComputerPremovePlanningChess();
+      const candidate = planning.moves({ square:from, verbose:true }).find((move) =>
+        move.to === to && (!move.promotion || move.promotion === promotion)
+      );
+      if (!candidate) {
+        computerPremoveMessage = `That move cannot be queued from ${from} to ${to}. Choose another move.`;
+        selected = null; targets = []; render(); return;
+      }
+      if (computerPreMoves.length >= 8) {
+        computerPremoveMessage = 'You can queue up to eight premoves.';
+        selected = null; targets = []; render(); return;
+      }
+      computerPreMoves.push({ from, to, promotion:promotion || null });
+      computerPremoveMessage = '';
+      selected = null; targets = []; render();
+    }
+    function cancelComputerPremoves() {
+      if (!computerPreMoves.length) return;
+      computerPreMoves = []; computerPremoveMessage = 'Queued premoves cancelled.';
+      selected = null; targets = []; render();
+    }
+    function paintComputerPremoves() {
+      const bar = $('computer-premove-bar');
+      bar.hidden = computerPreMoves.length === 0;
+      $('computer-premove-text').textContent = computerPreMoves.map((move, index) =>
+        `${index + 1}. ${move.from} → ${move.to}${move.promotion ? `=${move.promotion.toUpperCase()}` : ''}`
+      ).join('   ·   ');
+      $('computer-premove-cancel').disabled = computerPreMoves.length === 0;
+      $('computer-premove-note').textContent = computerPremoveMessage;
+    }
+    function runComputerPremove() {
+      if (!computerPreMoves.length || chess.isGameOver() || chess.turn() !== 'w' || busy || reviewRunning) return;
+      while (computerPreMoves.length) {
+        const pre = computerPreMoves.shift();
+        const candidate = chess.moves({ square:pre.from, verbose:true }).find((move) =>
+          move.to === pre.to && (!move.promotion || move.promotion === (pre.promotion || 'q'))
+        );
+        if (!candidate) {
+          const dependent = computerPreMoves.length;
+          computerPreMoves = [];
+          computerPremoveMessage = `Premove ${pre.from} → ${pre.to} was cancelled because Stockfish changed the position${dependent ? `; ${dependent} later queued move${dependent === 1 ? '' : 's'} also cleared` : ''}.`;
+          break;
+        }
+        try {
+          const move = chess.move({ from:pre.from, to:pre.to, promotion:pre.promotion || 'q' });
+          if (!move) continue;
+          lastMove = [move.from, move.to];
+          selected = null; targets = [];
+          computerPremoveMessage = '';
+          invalidateReview();
+          if (chess.isGameOver()) {
+            computerPreMoves = [];
+            computerPremoveMessage = 'The game ended before the remaining premoves could be played.';
+          } else {
+            askEngine(chess.fen(), Number($('depth').value), true);
+          }
+          render();
+          return;
+        } catch {
+          computerPremoveMessage = `Premove ${pre.from} → ${pre.to} was cancelled because it is no longer legal.`;
+        }
+      }
+      selected = null; targets = []; render();
+    }
     function render() {
       const view = reviewPreview ? new Chess(reviewPreview.fen) : chess;
+      const canPremove = isComputerPremoveWindow();
+      const planning = canPremove && computerPreMoves.length ? getComputerPremovePlanningChess() : null;
       const viewLastMove = reviewPreview ? reviewPreview.lastMove : lastMove;
       board.render({
         position:view.board(), orientation:'white',
         selected:reviewPreview ? null : selected,
         targets:reviewPreview ? [] : targets,
-        lastMove:viewLastMove, inCheck:view.isCheck(), turn:view.turn(), interactive:!reviewPreview
+        lastMove:viewLastMove, inCheck:view.isCheck(), turn:view.turn(),
+        premove:canPremove ? (computerPreMoves[0] || null) : null,
+        premovePosition:planning ? planning.board() : null,
+        dragPosition:planning ? planning.board() : null,
+        premoveTargets:canPremove,
+        interactive:!reviewPreview
       });
       const history = chess.history();
       $('moves').textContent = history.map((move, index) => (index % 2 === 0 ? Math.floor(index / 2 + 1) + '. ' : '') + move).join('  ');
@@ -189,25 +333,40 @@
       if (reviewPreview) {
         $('status').textContent = `Reviewing ${reviewPreview.label} · ${view.turn() === 'w' ? 'White' : 'Black'} to move`;
       } else {
-        $('status').textContent = chess.isGameOver() ? (chess.isCheckmate() ? 'Checkmate' : chess.isDraw() ? 'Draw' : 'Game over') : (chess.turn() === 'w' ? 'Your move · analysis unlocks when the game is complete' : 'Stockfish to move');
+        $('status').textContent = chess.isGameOver() ? (chess.isCheckmate() ? 'Checkmate' : chess.isDraw() ? 'Draw' : 'Game over') : (chess.turn() === 'w' ? 'Your move · analysis unlocks when the game is complete' : (isComputerPremoveWindow() ? (computerPreMoves.length ? `Stockfish thinking · ${computerPreMoves.length} premove${computerPreMoves.length === 1 ? '' : 's'} queued` : 'Stockfish is thinking · you can queue a premove') : 'Stockfish to move'));
       }
+      paintComputerPremoves();
       updateReviewAvailability();
     }
     function click(square) {
-      if (reviewPreview || reviewRunning || chess.isGameOver() || chess.turn() !== 'w' || busy) return;
-      const piece = chess.get(square);
+      if (reviewPreview || reviewRunning || chess.isGameOver()) return;
+      const myTurn = chess.turn() === 'w' && !busy;
+      const canPremove = isComputerPremoveWindow();
+      if (!myTurn && !canPremove) return;
+      const position = myTurn ? chess : getComputerPremovePlanningChess();
+      const piece = position.get(square);
       if (selected && targets.includes(square)) {
-        try {
-          const move = chess.move({ from:selected, to:square, promotion:'q' });
-          if (move) {
-            lastMove = [move.from, move.to]; selected = null; targets = [];
-            invalidateReview();
-            render(); askEngine(chess.fen(), Number($('depth').value), true); return;
-          }
-        } catch { /* illegal move; let the player select another square */ }
+        const from = selected;
+        if (myTurn) {
+          try {
+            const move = chess.move({ from, to:square, promotion:'q' });
+            if (move) {
+              lastMove = [move.from, move.to]; selected = null; targets = [];
+              invalidateReview();
+              render();
+              if (!chess.isGameOver()) askEngine(chess.fen(), Number($('depth').value), true);
+              return;
+            }
+          } catch { /* Illegal move; allow reselection. */ }
+        } else {
+          setComputerPremove(from, square, 'q');
+          return;
+        }
       }
       selected = piece && piece.color === 'w' ? square : null;
-      targets = selected ? chess.moves({ square:selected, verbose:true }).map((move) => move.to) : [];
+      targets = selected
+        ? (myTurn ? chess.moves({ square:selected, verbose:true }).map((move) => move.to) : computerPremoveTargets(selected, position))
+        : [];
       render();
     }
     function invalidateReview(message = 'The game changed. Run Review game again for updated analysis.') {
@@ -227,7 +386,12 @@
       } catch { /* Stockfish should always return a legal move for this position. */ }
       selected = null; targets = [];
       invalidateReview();
+      if (chess.isGameOver()) {
+        computerPreMoves = [];
+        computerPremoveMessage = 'The game ended before the queued premoves could be played.';
+      }
       render();
+      if (!chess.isGameOver()) runComputerPremove();
     }
     function uciToSan(fen, uci) {
       if (!uci || uci === '0000') return null;
@@ -420,6 +584,7 @@
     });
     $('new').addEventListener('click', () => {
       queuedSearch = null; pendingBotMove = false;
+      computerPreMoves = []; computerPremoveMessage = '';
       if (worker && busy) worker.postMessage('stop');
       busy = false; reviewPreview = null; reviewedRows = [];
       chess = new Chess(); selected = null; targets = []; lastMove = [];
@@ -430,6 +595,7 @@
     $('undo').addEventListener('click', () => {
       if (!chess.history().length || busy) return;
       reviewPreview = null; reviewedRows = [];
+      computerPreMoves = []; computerPremoveMessage = '';
       $('review-summary').hidden = true;
       $('annotations').innerHTML = '<p class="review-placeholder">The game changed. Run Review game again for updated analysis.</p>';
       chess.undo(); if (chess.turn() === 'b') chess.undo();
@@ -458,6 +624,16 @@
       } catch (error) {
         $('status').textContent = 'Could not open the review: browser storage is unavailable. ' + (error.message || '');
       }
+    });
+    $('computer-premove-cancel').addEventListener('click', cancelComputerPremoves);
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      if (selected) { selected = null; targets = []; render(); }
+      else cancelComputerPremoves();
+    });
+    $('board').addEventListener('contextmenu', (event) => {
+      if (!computerPreMoves.length) return;
+      event.preventDefault(); cancelComputerPremoves();
     });
     render(); initEngine();
   </script>
