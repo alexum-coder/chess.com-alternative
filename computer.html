@@ -3,11 +3,41 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Play computer · Zugzwang</title>
+  <title>Bots · Zugzwang</title>
   <link rel="stylesheet" href="/theme.css">
   <link rel="stylesheet" href="/board.css">
   <style>
     main { max-width:1160px; margin:24px auto; padding:0 18px 48px; display:grid; grid-template-columns:minmax(280px,650px) minmax(260px,1fr); gap:20px; align-items:start; }
+    [hidden] { display:none !important; }
+    .bot-lobby { max-width:1160px; margin:28px auto; padding:0 18px 48px; }
+    .bot-lobby-head { display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:14px; margin-bottom:18px; }
+    .bot-lobby-head h1 { margin:0; font-size:clamp(1.5rem,3vw,2.1rem); }
+    .bot-lobby-head p { color:var(--muted); margin:5px 0 0; max-width:690px; }
+    .bot-lobby-actions { display:flex; gap:8px; flex-wrap:wrap; }
+    .bot-lobby-actions button { border:1px solid var(--line); border-radius:9px; padding:10px 14px; color:var(--ink); background:var(--panel); cursor:pointer; font:inherit; font-weight:800; }
+    .bot-lobby-actions .random-bot { background:var(--accent); color:#182014; border-color:var(--accent); }
+    .bot-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+    .bot-card { display:flex; flex-direction:column; align-items:flex-start; min-width:0; text-align:left; padding:15px; border-radius:12px; border:1px solid var(--line); background:linear-gradient(145deg,var(--panel),var(--panel2)); color:var(--ink); cursor:pointer; transition:transform .15s,border-color .15s,box-shadow .15s; }
+    .bot-card:hover { transform:translateY(-2px); border-color:var(--accent); box-shadow:0 8px 22px rgba(0,0,0,.22); }
+    .bot-card-top { display:flex; align-items:center; gap:10px; width:100%; margin-bottom:11px; }
+    .bot-avatar { width:43px; height:43px; display:grid; place-items:center; border-radius:12px; background:#3a3935; font-size:1.55rem; flex:none; }
+    .bot-card-name { font-weight:850; line-height:1.2; overflow-wrap:anywhere; }
+    .bot-rating { margin-left:auto; color:#b8d99a; background:rgba(129,182,76,.13); border:1px solid rgba(129,182,76,.28); border-radius:6px; padding:4px 7px; font-weight:850; font-size:.8rem; white-space:nowrap; }
+    .bot-card p { margin:0; color:var(--muted); font-size:.82rem; line-height:1.4; min-height:2.35em; }
+    .bot-style { margin-top:11px; color:#c5a77d; font-size:.72rem; font-weight:800; letter-spacing:.04em; text-transform:uppercase; }
+    .bot-card-foot { display:flex; justify-content:space-between; width:100%; margin-top:13px; padding-top:10px; border-top:1px solid var(--line); color:var(--muted); font-size:.76rem; }
+    .bot-card-foot strong { color:var(--ink); }
+    .selected-bot-head { display:flex; align-items:center; gap:10px; margin-bottom:13px; }
+    .selected-bot-head .bot-avatar { width:40px; height:40px; }
+    .selected-bot-meta { min-width:0; flex:1; }
+    .selected-bot-meta strong { display:block; }
+    .selected-bot-meta small { color:var(--muted); }
+    .selected-bot-actions { display:flex; gap:6px; flex-wrap:wrap; }
+    .selected-bot-actions button { padding:7px 9px; font-size:.82rem; }
+    .game-intro { color:var(--muted); font-size:.8rem; margin:-4px 0 12px; }
+    @media(max-width:900px){ .bot-grid { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+    @media(max-width:640px){ .bot-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; } .bot-card { padding:11px; } .bot-lobby { margin:18px auto; padding:0 12px 36px; } }
+    @media(max-width:390px){ .bot-grid { grid-template-columns:1fr; } }
     .panel { background:var(--panel); border:1px solid var(--line); border-radius:11px; padding:18px; box-shadow:0 2px 9px rgba(35,49,39,.045); }
     .panel h2 { margin:0 0 12px; font-size:1.04rem; }
     .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:10px 0; }
@@ -50,15 +80,31 @@
   </style>
 </head>
 <body>
-  <main>
-    <section class="panel">
-      <h2>Play vs. computer</h2>
-      <div class="row">
-        <label for="depth">Engine strength</label>
-        <select id="depth"><option value="8">Casual</option><option value="12" selected>Club</option><option value="16">Strong</option><option value="20">Maximum</option></select>
-        <button id="new" class="primary">New game</button>
-        <button id="undo">Undo</button>
+  <section id="bot-lobby" class="bot-lobby">
+    <div class="bot-lobby-head">
+      <div>
+        <h1>Choose your bot</h1>
+        <p>Meet your next chess rival. Pick a personality and a challenge from 250 to 2000 estimated Elo, or let us choose someone at random.</p>
       </div>
+      <div class="bot-lobby-actions">
+        <button id="random-bot" class="random-bot" type="button">Surprise me</button>
+      </div>
+    </div>
+    <div id="bot-grid" class="bot-grid" aria-label="Available chess bots"></div>
+    <p class="hint">Bot ratings are approximate difficulty levels, not official ratings. Every bot takes at least two seconds to make a move.</p>
+  </section>
+  <main id="computer-game" hidden>
+    <section class="panel">
+      <div class="selected-bot-head">
+        <div class="bot-avatar" id="active-bot-avatar">🤖</div>
+        <div class="selected-bot-meta"><strong id="active-bot-name">Your opponent</strong><small id="active-bot-rating">— Elo</small></div>
+        <div class="selected-bot-actions">
+          <button id="change-bot" type="button">Change bot</button>
+          <button id="new" class="primary" type="button">New game</button>
+          <button id="undo" type="button">Undo</button>
+        </div>
+      </div>
+      <p class="game-intro" id="active-bot-style"></p>
       <div id="board" class="zz-board" aria-label="Chess board"></div>
       <div id="computer-premove-bar" class="computer-premove-bar" hidden>
         <span id="computer-premove-text"></span>
@@ -69,7 +115,7 @@
       <p id="status" class="status" role="status" aria-live="polite">Loading Stockfish…</p>
       <div class="row"><button id="analyze" disabled title="Available when the game is complete">Analyze position</button><button id="review" disabled title="Available when the game is complete">Review completed game</button></div>
       <p class="hint">Drag pieces or click a piece and destination. While Stockfish is thinking, queue up to eight premoves; they play automatically when they are legal on your turn.</p>
-      <p class="hint">Engine runs locally in your browser. Stockfish's JavaScript and WebAssembly files are downloaded from Zugzwang's public Supabase Storage bucket.</p>
+      <p class="hint">Your opponent is powered by Stockfish and takes at least two seconds before each move.</p>
     </section>
     <aside class="panel">
       <h2>Game review</h2>
@@ -92,9 +138,26 @@
     import { ZugzwangBoard } from '/board.js';
     import { parseUciInfoLine, classifyMoveQuality, explainMoveQuality } from '/review-scoring.mjs';
     const $ = (id) => document.getElementById(id);
+    const BOT_ROSTER = [
+      {id:'soggy-biscuit',name:'Soggy Biscuit',elo:250,avatar:'🍪',style:'Happy accidents',bio:'Still figuring out which way the knights hop.',skill:0,depth:1},
+      {id:'waffle-gambit',name:'Waffle Gambit',elo:400,avatar:'🧇',style:'Sweet and chaotic',bio:'Loves pawns, forgets about queens.',skill:1,depth:1},
+      {id:'sir-blunderlot',name:'Sir Blunderlot',elo:550,avatar:'🛡️',style:'Brave but wobbly',bio:'Charges into battle with questionable plans.',skill:2,depth:2},
+      {id:'pawn-solo',name:'Pawn Solo',elo:700,avatar:'🚀',style:'Space adventurer',bio:'Has a plan. It might involve pushing every pawn.',skill:3,depth:2},
+      {id:'knight-owl',name:'Knight Owl',elo:850,avatar:'🦉',style:'Late-night tactician',bio:'Spots the occasional fork after a little thinking.',skill:5,depth:3},
+      {id:'bishop-bubbles',name:'Bishop Bubbles',elo:1000,avatar:'🫧',style:'Diagonal dreamer',bio:'Likes long diagonals and shiny sacrifices.',skill:7,depth:4},
+      {id:'rook-lobster',name:'Rook Lobster',elo:1150,avatar:'🦞',style:'Sideways specialist',bio:'Gets serious when files open up.',skill:9,depth:5},
+      {id:'queen-quokka',name:'Queen Quokka',elo:1300,avatar:'🐹',style:'Cheerfully tricky',bio:'Keeps an eye out for tactics and loose pieces.',skill:11,depth:6},
+      {id:'forklift',name:'Forklift',elo:1450,avatar:'🚜',style:'Fork enthusiast',bio:'Loves double attacks and awkward pins.',skill:20,depth:8},
+      {id:'castle-gremlin',name:'Castle Gremlin',elo:1600,avatar:'🏰',style:'Solid defender',bio:'Builds a fortress, then looks for a counterpunch.',skill:20,depth:9},
+      {id:'grandmaster-goose',name:'Grandmaster Goose',elo:1800,avatar:'🪿',style:'Positional menace',bio:'Quiet moves, annoying pressure, honks at inaccuracies.',skill:20,depth:10},
+      {id:'the-algorithm',name:'The Algorithm',elo:2000,avatar:'🧠',style:'Cold calculation',bio:'A serious test with sharp tactical vision.',skill:20,depth:12}
+    ];
+    let activeBot = null;
+    let botMoveTimer = null, botSearchStartedAt = 0, botSearchFen = null, gameEpoch = 0;
+    const MIN_BOT_THINK_MS = 2000;
     let chess = new Chess(), selected = null, targets = [], lastMove = [], worker = null;
     let ready = false, busy = false, lastEval = null, bestMove = null;
-    let queuedSearch = null, pendingBotMove = false, engineFailed = false;
+    let queuedSearch = null, pendingBotMove = false, engineFailed = false, ignoreNextBestMove = false;
     let reviewRunning = false, reviewPreview = null, reviewedRows = [];
     let computerPreMoves = [], computerPremoveMessage = '';
     const board = new ZugzwangBoard($('board'), click);
@@ -122,7 +185,27 @@
     function startSearch(request) {
       if (!worker || !ready || engineFailed || busy) return false;
       busy = true; pendingBotMove = request.bot;
-      $('best').textContent = request.bot ? 'Stockfish is thinking…' : 'Thinking…';
+      if (request.bot) {
+        botSearchStartedAt = performance.now();
+        botSearchFen = request.fen;
+        if (botMoveTimer) { clearTimeout(botMoveTimer); botMoveTimer = null; }
+        const skill = activeBot?.skill ?? 8;
+        worker.postMessage(`setoption name Skill Level value ${Math.max(0, Math.min(20, skill))}`);
+        if ((activeBot?.elo ?? 1000) >= 1320) {
+          worker.postMessage('setoption name UCI_LimitStrength value true');
+          worker.postMessage(`setoption name UCI_Elo value ${Math.max(1320, Math.min(2000, activeBot.elo))}`);
+        } else {
+          worker.postMessage('setoption name UCI_LimitStrength value false');
+        }
+        worker.postMessage('setoption name UCI_AnalyseMode value false');
+      } else {
+        // The completed-position analysis control should use the full engine, not retain
+        // the selected opponent's handicap from the game that just ended.
+        worker.postMessage('setoption name UCI_LimitStrength value false');
+        worker.postMessage('setoption name Skill Level value 20');
+        worker.postMessage('setoption name UCI_AnalyseMode value true');
+      }
+      $('best').textContent = request.bot ? `${activeBot?.name || 'Bot'} is thinking…` : 'Thinking…';
       worker.postMessage('position fen ' + request.fen);
       worker.postMessage('go depth ' + request.depth);
       return true;
@@ -135,7 +218,7 @@
         return;
       }
       if (line === 'uciok') {
-        worker.postMessage('setoption name UCI_AnalyseMode value true');
+        worker.postMessage('setoption name UCI_AnalyseMode value false');
         worker.postMessage('setoption name MultiPV value 1');
         worker.postMessage('isready');
       }
@@ -154,12 +237,35 @@
         $('eval').textContent = (lastEval > 0 ? '+' : '') + lastEval.toFixed(2);
         $('best').textContent = 'Engine search depth ' + liveInfo.depth;
       }
-      const best = line.match(/bestmove ([a-h][1-8][a-h][1-8][qrbn]?)/);
+      const best = line.match(/^bestmove\s+(\S+)/);
       if (best) {
-        busy = false; bestMove = best[1];
-        const shouldPlay = pendingBotMove; pendingBotMove = false;
-        if (shouldPlay && chess.turn() === 'b' && !chess.isGameOver()) makeBotMove(bestMove);
-        else { $('best').textContent = 'Best move: ' + bestMove; updateReviewAvailability(); }
+        if (ignoreNextBestMove) { ignoreNextBestMove = false; return; }
+        busy = false;
+        if (!/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(best[1])) { pendingBotMove = false; updateReviewAvailability(); return; }
+        bestMove = best[1];
+        const shouldPlay = pendingBotMove;
+        if (shouldPlay && chess.turn() === 'b' && !chess.isGameOver()) {
+          const expectedFen = botSearchFen;
+          const expectedEpoch = gameEpoch;
+          const moveToPlay = bestMove;
+          const wait = Math.max(0, MIN_BOT_THINK_MS - (performance.now() - botSearchStartedAt));
+          $('status').textContent = `${activeBot?.name || 'Your bot'} is thinking…`;
+          $('best').textContent = 'Choosing a move…';
+          botMoveTimer = setTimeout(() => {
+            botMoveTimer = null;
+            if (expectedEpoch !== gameEpoch || chess.fen() !== expectedFen || chess.turn() !== 'b' || chess.isGameOver()) {
+              pendingBotMove = false;
+              render();
+              return;
+            }
+            pendingBotMove = false;
+            makeBotMove(moveToPlay);
+          }, wait);
+        } else {
+          pendingBotMove = false;
+          $('best').textContent = 'Best move: ' + bestMove;
+          updateReviewAvailability();
+        }
       }
     }
     function askEngine(fen, depth, bot = false) {
@@ -301,7 +407,7 @@
             computerPreMoves = [];
             computerPremoveMessage = 'The game ended before the remaining premoves could be played.';
           } else {
-            askEngine(chess.fen(), Number($('depth').value), true);
+            askEngine(chess.fen(), (activeBot?.depth ?? 6), true);
           }
           render();
           return;
@@ -354,7 +460,7 @@
               lastMove = [move.from, move.to]; selected = null; targets = [];
               invalidateReview();
               render();
-              if (!chess.isGameOver()) askEngine(chess.fen(), Number($('depth').value), true);
+              if (!chess.isGameOver()) askEngine(chess.fen(), (activeBot?.depth ?? 6), true);
               return;
             }
           } catch { /* Illegal move; allow reselection. */ }
@@ -496,8 +602,7 @@
       $('analyze').disabled = disabled;
       $('new').disabled = disabled;
       $('undo').disabled = disabled;
-      $('depth').disabled = disabled;
-    }
+          }
     function renderReviewSummary(rows) {
       const summary = $('review-summary');
       summary.replaceChildren();
@@ -507,8 +612,7 @@
       const order = [
         ['brilliant', 'Brilliant'], ['best', 'Best'], ['great', 'Great'],
         ['excellent', 'Excellent'], ['good', 'Good'], ['inaccuracy', 'Inaccuracy'],
-        ['mistake', 'Mistake'], ['blunder', 'Blunder'], ['missed-win', 'Missed win'],
-        ['checkmate', 'Checkmate']
+        ['mistake', 'Mistake'], ['blunder', 'Blunder'], ['missed-win', 'Missed win']
       ];
       const counts = new Map();
       for (const row of rows) counts.set(row.label.key, (counts.get(row.label.key) || 0) + 1);
@@ -525,7 +629,7 @@
     function rowIcon(key) {
       return ({
         brilliant:'!!', best:'✓', great:'!', excellent:'★', good:'○',
-        inaccuracy:'?!', mistake:'?', blunder:'??', 'missed-win':'??', checkmate:'♔'
+        inaccuracy:'?!', mistake:'?', blunder:'??', 'missed-win':'??'
       })[key] || '·';
     }
     function renderReviewRows(rows) {
@@ -578,22 +682,82 @@
       }
       renderReviewSummary(rows);
     }
-    $('return-position').addEventListener('click', () => {
-      reviewPreview = null;
-      render();
-    });
-    $('new').addEventListener('click', () => {
-      queuedSearch = null; pendingBotMove = false;
+    function shuffledBots() {
+      const list = [...BOT_ROSTER];
+      for (let i = list.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [list[i], list[j]] = [list[j], list[i]];
+      }
+      return list;
+    }
+    function renderBotLobby() {
+      const grid = $('bot-grid');
+      grid.replaceChildren();
+      for (const bot of shuffledBots()) {
+        const card = document.createElement('button');
+        card.type = 'button'; card.className = 'bot-card';
+        card.setAttribute('aria-label', `Play ${bot.name}, approximately ${bot.elo} Elo`);
+        const top = document.createElement('div'); top.className = 'bot-card-top';
+        const avatar = document.createElement('span'); avatar.className = 'bot-avatar'; avatar.textContent = bot.avatar;
+        const name = document.createElement('strong'); name.className = 'bot-card-name'; name.textContent = bot.name;
+        const rating = document.createElement('span'); rating.className = 'bot-rating'; rating.textContent = `${bot.elo} Elo`;
+        top.append(avatar,name,rating);
+        const bio = document.createElement('p'); bio.textContent = bot.bio;
+        const style = document.createElement('span'); style.className = 'bot-style'; style.textContent = bot.style;
+        const foot = document.createElement('span'); foot.className = 'bot-card-foot';
+        const challenge = document.createElement('span'); challenge.textContent = bot.elo < 700 ? 'Warm-up' : bot.elo < 1200 ? 'Casual club' : bot.elo < 1600 ? 'Club challenge' : bot.elo < 1850 ? 'Advanced' : 'Expert';
+        const play = document.createElement('strong'); play.textContent = 'Play →';
+        foot.append(challenge,play); card.append(top,bio,style,foot);
+        card.addEventListener('click', () => selectBot(bot));
+        grid.append(card);
+      }
+    }
+    function selectBot(bot) {
+      activeBot = bot;
+      $('active-bot-avatar').textContent = bot.avatar;
+      $('active-bot-name').textContent = bot.name;
+      $('active-bot-rating').textContent = `~${bot.elo} Elo · ${bot.style}`;
+      $('active-bot-style').textContent = bot.bio;
+      $('bot-lobby').hidden = true;
+      $('computer-game').hidden = false;
+      startNewBotGame();
+    }
+    function startNewBotGame() {
+      gameEpoch++;
+      if (botMoveTimer) { clearTimeout(botMoveTimer); botMoveTimer = null; }
+      queuedSearch = null; pendingBotMove = false; botSearchFen = null;
       computerPreMoves = []; computerPremoveMessage = '';
-      if (worker && busy) worker.postMessage('stop');
+      if (worker && busy) { ignoreNextBestMove = true; worker.postMessage('stop'); }
       busy = false; reviewPreview = null; reviewedRows = [];
       chess = new Chess(); selected = null; targets = []; lastMove = [];
       $('review-summary').hidden = true;
       $('annotations').innerHTML = '<p class="review-placeholder">Play a game, then select Review game.</p>';
-      render(); $('eval').textContent = '—'; $('best').textContent = 'New game. Your move.';
+      render(); $('eval').textContent = '—'; $('best').textContent = `${activeBot.name} is ready. Your move.`;
+      $('status').textContent = `Playing ${activeBot.name} · approximately ${activeBot.elo} Elo`;
+    }
+    function returnToBotLobby() {
+      gameEpoch++;
+      if (botMoveTimer) { clearTimeout(botMoveTimer); botMoveTimer = null; }
+      if (worker && busy) { ignoreNextBestMove = true; worker.postMessage('stop'); }
+      busy = false; pendingBotMove = false; queuedSearch = null;
+      computerPreMoves = []; computerPremoveMessage = '';
+      activeBot = null;
+      $('computer-game').hidden = true;
+      $('bot-lobby').hidden = false;
+      renderBotLobby();
+    }
+    $('random-bot').addEventListener('click', () => selectBot(BOT_ROSTER[Math.floor(Math.random() * BOT_ROSTER.length)]));
+    $('change-bot').addEventListener('click', returnToBotLobby);
+    $('return-position').addEventListener('click', () => {
+      reviewPreview = null;
+      render();
     });
+    $('new').addEventListener('click', startNewBotGame);
     $('undo').addEventListener('click', () => {
       if (!chess.history().length || busy) return;
+      gameEpoch++;
+      if (botMoveTimer) { clearTimeout(botMoveTimer); botMoveTimer = null; }
+      pendingBotMove = false;
       reviewPreview = null; reviewedRows = [];
       computerPreMoves = []; computerPremoveMessage = '';
       $('review-summary').hidden = true;
@@ -607,14 +771,14 @@
     $('analyze').addEventListener('click', () => {
       if (!chess.isGameOver()) return;
       reviewPreview = null;
-      askEngine(chess.fen(), Number($('depth').value));
+      askEngine(chess.fen(), 14);
     });
     $('review').addEventListener('click', () => {
       if (!chess.isGameOver()) return;
       const result = chess.isCheckmate() ? (chess.turn() === 'w' ? '0-1' : '1-0') : '1/2-1/2';
       const payload = {
         id:'computer-' + Date.now(), source:'computer',
-        white_name:'You', black_name:'Stockfish', result,
+        white_name:'You', black_name:activeBot?.name || 'Chess bot', result,
         reason:chess.isCheckmate() ? 'checkmate' : 'draw',
         pgn:chess.pgn(), base:0, inc:0, created_at:new Date().toISOString()
       };
@@ -635,7 +799,7 @@
       if (!computerPreMoves.length) return;
       event.preventDefault(); cancelComputerPremoves();
     });
-    render(); initEngine();
+    renderBotLobby(); render(); initEngine();
   </script>
 </body>
 </html>

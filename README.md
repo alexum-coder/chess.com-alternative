@@ -152,5 +152,10 @@ All moveable shared boards support mouse, pen and touch drag-and-drop, while pre
 ### Computer-game premoves
 
 Play vs. Computer now supports the same chained premove queue as online games. While Stockfish is calculating Black's reply, White can queue up to eight speculative moves. The board previews the projected position and queued sequence; each move is revalidated against the actual position after every Stockfish reply before it is played. Invalidated sequences are cleared safely, and the queue can be cancelled with the button, Escape, or right-click.
+
+
+## Bot selection and minimum move delay
+
+The Bots page presents a randomized selection of named opponents rated from 250 to 2000 approximate Elo. Opponent strength is controlled with Stockfish Skill Level and, for ratings at or above the engine's supported UCI Elo floor, UCI_LimitStrength/UCI_Elo plus a bot-specific search depth. These labels are intended as difficulty estimates, not calibrated online ratings. Bot moves are held until at least 2000 ms have elapsed from the start of that bot search; pending premoves remain available during the minimum think interval.
 #   c h e s s . c o m - a l t e r n a t i v e  
  

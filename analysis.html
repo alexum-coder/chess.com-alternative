@@ -647,7 +647,7 @@
         pill.title = 'Zugzwang estimate based on expected-score loss; not Chess.com’s proprietary accuracy formula.';
         summary.append(pill);
       }
-      const order = ['book','brilliant','best','great','excellent','good','inaccuracy','mistake','blunder','missed-win','miss','checkmate'];
+      const order = ['book','brilliant','best','great','excellent','good','inaccuracy','mistake','blunder','missed-win','miss'];
       for (const key of order) {
         const count = counts.get(key) || 0; if (!count) continue;
         const pill = document.createElement('span'); pill.className = 'summary-pill';

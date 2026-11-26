@@ -33,7 +33,7 @@ test('the queue is replayed after each Stockfish reply and every move is revalid
   assert.match(run, /chess\.turn\(\) !== 'w'/);
   assert.match(run, /chess\.moves\(\{ square:pre\.from, verbose:true \}\)/);
   assert.match(run, /chess\.move\(\{ from:pre\.from, to:pre\.to/);
-  assert.match(run, /askEngine\(chess\.fen\(\), Number\(\$\('depth'\)\.value\), true\)/);
+  assert.match(run, /askEngine\(chess\.fen\(\), \(activeBot\?\.depth \?\? 6\), true\)/);
 });
 
 test('an invalidated first premove clears the dependent speculative sequence', () => {

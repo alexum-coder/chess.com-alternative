@@ -35,7 +35,7 @@
   const currentPath = location.pathname || '/';
   const links = [
     ['Play', '/', currentPath === '/' || currentPath === '/index.html'],
-    ['Computer', '/computer.html', currentPath === '/computer.html'],
+    ['Bots', '/computer.html', currentPath === '/computer.html'],
     ['Puzzles', '/puzzles.html', currentPath === '/puzzles.html'],
     ['Tournaments', '/#tournamentPanel', location.hash === '#tournamentPanel'],
     ['Profile', '/profile.html', currentPath === '/profile.html']
