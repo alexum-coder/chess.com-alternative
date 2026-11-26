@@ -44,13 +44,13 @@ test('selected move annotates origin and destination squares with grade colours'
   assert.match(html, /moveAnnotation:annotation/);
   assert.match(html, /from:move\.move\.from, to:move\.move\.to/);
   assert.match(html, /REVIEW_COLORS =/);
-  for (const color of ['#8be0f2', '#3289ef', '#4ade80', '#14532d', '#f0d343', '#f3973e', '#ed4d4d']) {
+  for (const color of ['#8be0f2', '#3289ef', '#4ade80', '#2f7d45', '#f0d343', '#f3973e', '#ed4d4d', '#f5a6b2', '#b68a5a']) {
     assert.ok(html.includes(color), `expected board colour ${color}`);
   }
   assert.match(html, /\.mark-excellent \.review-icon \{ background:#19472b; color:#4ade80; \}/);
-  assert.match(html, /\.mark-best \.review-icon \{ background:#d1fae5; color:#14532d; \}/);
+  assert.match(html, /\.mark-best \.review-icon \{ background:#303a31; color:#2f7d45; \}/);
   assert.match(boardCss, /mark-excellent \{ --review-annotation-color: #4ade80; \}/);
-  assert.match(boardCss, /mark-best \{ --review-annotation-color: #14532d; background:#d1fae5; \}/);
+  assert.match(boardCss, /mark-best \{ --review-annotation-color: #2f7d45; background:rgba\(25,25,24,.94\); \}/);
   assert.match(html, /row\.move\.from/);
   assert.match(html, /row\.move\.to/);
   assert.match(html, /pieceNames\[row\.move\.piece\]/);
@@ -71,4 +71,14 @@ test('shared board overlays the annotation on the moved piece and highlights bot
   assert.match(boardCss, /\.zz-board \.sq\.review-move-from/);
   assert.match(boardCss, /\.zz-board \.sq\.review-move-to/);
   assert.match(boardCss, /\.zz-board \.zz-review-badge/);
+});
+
+
+test('review has brown Book styling, no neon Best background, and light-red Miss marks', () => {
+  assert.match(html, /move-cell\.mark-book \{ color:#c99a68; \}/);
+  assert.match(html, /move-cell\.mark-best \{ color:#4f9a63; background:transparent; \}/);
+  assert.match(html, /move-cell\.mark-miss \{ color:#f5a6b2; \}/);
+  assert.match(html, /miss:'X'/);
+  assert.match(boardCss, /mark-miss \{ --review-annotation-color: #f5a6b2; \}/);
+  assert.doesNotMatch(boardCss, /mark-best \{[^}]*background:#d1fae5/);
 });

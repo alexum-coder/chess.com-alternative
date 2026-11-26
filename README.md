@@ -120,5 +120,17 @@ The computer page queues a move made while Stockfish is still downloading/initia
 - A non-best move that worsens the evaluation by at least 2.0 pawns is graded as a blunder, even if expected-score loss rounds to 0.0%.
 - Winning queen captures that leave a clear advantage retain the queen-capture safeguard; forced mates are not protected.
 - Excellent annotations use green; Best annotations use dark green.
+
+## Game review grading update (November 26, 2026)
+
+The review grades are intentionally more conservative than the previous build:
+
+- Expected-score loss bands are wider; only losses above 35 percentage points are automatically Blunders.
+- Raw evaluation swings are only used as a guardrail for exceptionally large deterioration. A 4-pawn swing that leaves the mover level or worse can still be a Blunder (this preserves the +5 to +9 regression case); a similar swing while the mover remains comfortably winning is downgraded.
+- Queen-capture protection remains in place when best-play analysis still leaves a clear advantage and no forced mate is found.
+- **Miss (X)** is separate from Blunder. It is used when the engine's best move immediately wins at least a minor piece that the played move did not take, or when a forced mate was available and the played move lets it escape. A move that instead allows the opponent a forced mate is not disguised as a Miss.
+- Book move annotations use brown; Best has no bright background; Miss uses light red.
+
+These are Zugzwang's own conservative review heuristics, not a reproduction of Chess.com's proprietary grading formula.
 #   c h e s s . c o m - a l t e r n a t i v e  
  

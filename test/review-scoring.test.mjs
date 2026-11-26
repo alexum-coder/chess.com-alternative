@@ -8,6 +8,7 @@ import {
   calculateExpectedPointsLoss,
   expectedScoreFromPawns,
   classifyMoveQuality,
+  detectMissedOpportunity,
   explainMoveQuality,
   isKnownBookPrefix,
   getBookOpenings,
@@ -200,4 +201,64 @@ test('move explanations name captures, checks, and castling accurately', () => {
   });
   assert.match(castle, /castle kingside/i);
   assert.doesNotMatch(castle, /moves the king from e1 to g1/i);
+});
+
+
+test('calibrated grading avoids promoting ordinary engine swings to Blunders', () => {
+  const row = { color:'w', uci:'a2a3', san:'a3', move:{ piece:'p', from:'a2', to:'a3' } };
+  const before = { whiteScore:0.2, score:{type:'cp',value:20}, bestMove:'e2e4' };
+  const afterMistake = { whiteScore:-0.8, score:{type:'cp',value:-80} };
+  const mistakeLoss = calculateExpectedPointsLoss(before, afterMistake, 'w');
+  const mistake = classifyMoveQuality({row,before,after:afterMistake,loss:mistakeLoss});
+  assert.notEqual(mistake.key, 'blunder');
+
+  const afterLarge = { whiteScore:-1.1, score:{type:'cp',value:-110} };
+  const largeLoss = calculateExpectedPointsLoss(before, afterLarge, 'w');
+  const large = classifyMoveQuality({row,before,after:afterLarge,loss:largeLoss});
+  assert.equal(large.key, 'blunder');
+});
+
+test('raw evaluation swings only escalate when the resulting position is truly bad', () => {
+  const row = { color:'w', uci:'a2a3', san:'a3', move:{piece:'p',from:'a2',to:'a3'} };
+  const before = { whiteScore:8, score:{type:'cp',value:800}, bestMove:'e2e4' };
+  const afterStillWinning = { whiteScore:4, score:{type:'cp',value:400} };
+  const label = classifyMoveQuality({row,before,after:afterStillWinning,loss:0.001});
+  assert.notEqual(label.key, 'blunder');
+  assert.equal(label.key, 'inaccuracy');
+});
+
+test('detects a missed rook capture and labels it Miss', () => {
+  const row = { color:'w', uci:'a2a3', san:'a3', move:{piece:'p',from:'a2',to:'a3',captured:null} };
+  const before = { turn:'w', bestMove:'e2e4', score:{type:'cp',value:10} };
+  const after = { turn:'b', score:{type:'cp',value:0} };
+  const missedOpportunity = detectMissedOpportunity({
+    row,before,after,
+    bestMoveDetails:{uci:'e2e4',from:'e2',to:'e8',captured:'r',san:'Rxe8+'}
+  });
+  assert.deepEqual(missedOpportunity,{type:'piece',piece:'r',square:'e8',bestSan:'Rxe8+'});
+  row.missedOpportunity = missedOpportunity;
+  const label = classifyMoveQuality({row,before,after,loss:0.08});
+  assert.equal(label.key,'miss');
+  const text = explainMoveQuality({row,label,loss:0.08,after});
+  assert.match(text,/Miss:/);
+  assert.match(text,/rook available to win on e8/i);
+});
+
+test('detects a missed forced mate but not when the played move keeps the mating win', () => {
+  const row = { color:'w', uci:'a2a3', san:'a3', move:{piece:'p',from:'a2',to:'a3'} };
+  const before = { turn:'w', score:{type:'mate',value:2} };
+  const afterNoMate = { turn:'b', score:{type:'cp',value:300} };
+  const bestMoveDetails = {uci:'e2e4',from:'e2',to:'e8',san:'Qh8#'};
+  assert.equal(detectMissedOpportunity({row,before,after:afterNoMate,bestMoveDetails}).type,'mate');
+  const afterStillMate = { turn:'b', score:{type:'mate',value:-3} };
+  assert.equal(detectMissedOpportunity({row,before,after:afterStillMate,bestMoveDetails}),null);
+});
+
+test('does not call a missed piece capture when the played move wins a more valuable piece', () => {
+  const row = { color:'w', uci:'a2a3', san:'Rxa8', move:{piece:'r',from:'a2',to:'a8',captured:'q'} };
+  const opportunity = detectMissedOpportunity({
+    row,before:{turn:'w'},after:{score:{type:'cp',value:0}},
+    bestMoveDetails:{uci:'e2e4',from:'e2',to:'e8',captured:'r',san:'Rxe8'}
+  });
+  assert.equal(opportunity,null);
 });

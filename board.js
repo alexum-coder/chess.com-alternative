@@ -124,7 +124,7 @@ export class ZugzwangBoard {
       }
       badge.append(svg);
     } else {
-      badge.textContent = annotation.mark || ({ brilliant:'!!', great:'!', good:'✓', inaccuracy:'?', mistake:'?!', blunder:'??', 'missed-win':'?!', book:'▤' }[key] || '·');
+      badge.textContent = annotation.mark || ({ brilliant:'!!', great:'!', good:'✓', inaccuracy:'?', mistake:'?!', blunder:'??', 'missed-win':'?!', miss:'X', book:'▤' }[key] || '·');
     }
     return badge;
   }

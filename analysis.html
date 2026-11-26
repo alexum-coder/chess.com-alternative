@@ -60,19 +60,19 @@
     .move-detail-head strong { font-size:.95rem; }
     .move-detail p { margin:5px 0 0; font-size:.83rem; line-height:1.45; color:#e1dfd9; }
     .move-detail .muted { color:var(--muted); font-size:.76rem; }
-    .book-panel { margin:0 14px 12px; padding:12px 13px; border:1px solid #465345; border-radius:8px; background:linear-gradient(135deg,#30372e,#30302d); }
+    .book-panel { margin:0 14px 12px; padding:12px 13px; border:1px solid #5a4635; border-radius:8px; background:linear-gradient(135deg,#3b3027,#302d29); }
     .book-panel[hidden] { display:none; }
     .book-panel-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:7px; }
     .book-panel-head strong { font-size:.86rem; }
-    .book-panel-head span { color:#b5d39d; font-size:.7rem; font-weight:800; text-transform:uppercase; letter-spacing:.06em; }
+    .book-panel-head span { color:#d0a77a; font-size:.7rem; font-weight:800; text-transform:uppercase; letter-spacing:.06em; }
     .book-intro { margin:0 0 9px; color:#c4c5bb; font-size:.76rem; line-height:1.4; }
     .book-options { display:grid; gap:6px; }
-    .book-option { display:grid; grid-template-columns:54px minmax(0,1fr); gap:9px; align-items:start; padding:8px 9px; border-radius:6px; background:#252923; border:1px solid #414a3e; }
-    .book-option-move { color:#d7edc7; font-weight:900; font-size:.95rem; }
+    .book-option { display:grid; grid-template-columns:54px minmax(0,1fr); gap:9px; align-items:start; padding:8px 9px; border-radius:6px; background:#2b251f; border:1px solid #5a4635; }
+    .book-option-move { color:#d2a06e; font-weight:900; font-size:.95rem; }
     .book-option-names { color:#e7e4dc; font-size:.76rem; font-weight:800; }
     .book-option-line { display:block; margin-top:3px; color:#aeb2a5; font-size:.7rem; line-height:1.4; }
     .book-tags { display:flex; flex-wrap:wrap; gap:5px; margin-top:7px; }
-    .book-tag { padding:3px 6px; border-radius:4px; background:#3b4836; color:#c9e6b4; font-size:.68rem; font-weight:800; }
+    .book-tag { padding:3px 6px; border-radius:4px; background:#55402e; color:#e0b889; font-size:.68rem; font-weight:800; }
     .review-icon { display:inline-grid; place-items:center; width:27px; height:27px; flex:0 0 27px; border-radius:50%; background:#41403b; color:#d7d4cc; }
     .review-icon.review-glyph { font-size:15px; font-weight:900; line-height:1; letter-spacing:-.04em; text-align:center; white-space:nowrap; }
     .review-icon svg { width:16px; height:16px; display:block; }
@@ -85,30 +85,35 @@
     .mini-mark.pending { width:11px; height:11px; margin:0 3px; border-radius:50%; background:#494741; position:relative; overflow:hidden; }
     .mini-mark.pending::after { content:""; position:absolute; inset:0; transform:translateX(-100%); background:linear-gradient(90deg,transparent,rgba(255,255,255,.14),transparent); animation:skeleton-shimmer 1.35s ease-in-out infinite; }
     @media(prefers-reduced-motion:reduce) { .skeleton-icon::after,.skeleton-line::after,.mini-mark.pending::after { animation:none; transform:none; opacity:.35; } }
-    .mark-book .review-icon { background:#34424a; color:#b7d6e8; }
+    .mark-book .review-icon { background:#493728; color:#c99a68; }
     .mark-brilliant .review-icon { background:#21424a; color:#8be0f2; box-shadow:0 0 0 2px rgba(104,213,230,.10); }
     .mark-great .review-icon { background:#203f68; color:#3289ef; }
     .mark-excellent .review-icon { background:#19472b; color:#4ade80; }
-    .mark-best .review-icon { background:#d1fae5; color:#14532d; }
+    .mark-best .review-icon { background:#303a31; color:#2f7d45; }
     .mark-good .review-icon { background:#3e463b; color:#c8d2c0; }
     .mark-inaccuracy .review-icon { background:#514923; color:#f0d343; }
     .mark-mistake .review-icon { background:#593b22; color:#f3973e; }
     .mark-blunder .review-icon,.mark-missed-win .review-icon { background:#572f30; color:#ed4d4d; }
+    .mark-miss .review-icon { background:#583941; color:#f5a6b2; }
     .mark-checkmate .review-icon { background:#413750; color:#c5a2ff; }
     .mini-mark.mark-brilliant { color:#8be0f2; }
     .mini-mark.mark-great { color:#3289ef; }
+    .mini-mark.mark-book { color:#c99a68; }
     .mini-mark.mark-excellent { color:#4ade80; }
-    .mini-mark.mark-best { color:#14532d; background:#d1fae5; border-radius:50%; }
+    .mini-mark.mark-best { color:#2f7d45; background:transparent; border-radius:0; }
     .mini-mark.mark-inaccuracy { color:#f0d343; }
     .mini-mark.mark-mistake { color:#f3973e; }
     .mini-mark.mark-blunder,.mini-mark.mark-missed-win { color:#ed4d4d; }
+    .mini-mark.mark-miss { color:#f5a6b2; }
     .mini-mark.mark-checkmate { color:#c5a2ff; }
     .move-cell.mark-great { color:#55a0f7; }
+    .move-cell.mark-book { color:#c99a68; }
     .move-cell.mark-excellent { color:#4ade80; }
-    .move-cell.mark-best { color:#14532d; background:#d1fae5; }
+    .move-cell.mark-best { color:#4f9a63; background:transparent; }
     .move-cell.mark-inaccuracy { color:#f0d343; }
     .move-cell.mark-mistake { color:#f3973e; }
     .move-cell.mark-blunder,.move-cell.mark-missed-win { color:#ed4d4d; }
+    .move-cell.mark-miss { color:#f5a6b2; }
     .move-cell.mark-brilliant { color:#8be0f2; }
     .moves-area { padding:0 14px 12px; }
     .moves-title { display:flex; justify-content:space-between; align-items:center; gap:8px; margin:0 0 8px; }
@@ -118,7 +123,7 @@
     .move-number { color:#929089; font-size:.74rem; text-align:right; padding-right:3px; }
     .move-cell { display:flex; align-items:center; gap:5px; min-width:0; padding:6px 7px; border:1px solid transparent; border-radius:5px; background:transparent; font-size:.8rem; font-weight:800; text-align:left; }
     .move-cell.selected { background:#4b4a45; border-color:#8a877f; box-shadow:inset 3px 0 #81b64c; }
-    .move-cell.mark-best.selected { background:#d1fae5; border-color:#14532d; color:#14532d; box-shadow:inset 3px 0 #14532d; }
+    .move-cell.mark-best.selected { background:#4b4a45; border-color:#2f7d45; color:#75b985; box-shadow:inset 3px 0 #2f7d45; }
     .move-cell .notation { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .move-cell .mini-mark { flex:0 0 15px; font-size:.7rem; text-align:center; }
     .move-cell.mark-inaccuracy,.move-cell.mark-mistake { color:#ffc16e; }
@@ -202,7 +207,7 @@
   <script type="module">
     import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.0.0/+esm';
     import { ZugzwangBoard } from '/board.js';
-    import { parseUciInfoLine, getBookOpenings, getBookOptions, calculateMoveLoss, calculateExpectedPointsLoss, formatExpectedPointsLoss, classifyMoveQuality, explainMoveQuality, formatWhiteEvaluation } from '/review-scoring.mjs';
+    import { parseUciInfoLine, getBookOpenings, getBookOptions, calculateMoveLoss, calculateExpectedPointsLoss, formatExpectedPointsLoss, classifyMoveQuality, detectMissedOpportunity, explainMoveQuality, formatWhiteEvaluation } from '/review-scoring.mjs';
     const $ = (id) => document.getElementById(id);
     const params = new URLSearchParams(location.search);
     const gameId = params.get('id');
@@ -213,9 +218,9 @@
 
     const ANALYSIS_DEPTH = 14;
     const REVIEW_COLORS = {
-      brilliant:'#8be0f2', great:'#3289ef', excellent:'#4ade80', best:'#14532d',
-      inaccuracy:'#f0d343', mistake:'#f3973e', blunder:'#ed4d4d', 'missed-win':'#ed4d4d',
-      checkmate:'#c5a2ff', book:'#9bc7df', good:'#c8d2c0'
+      brilliant:'#8be0f2', great:'#3289ef', excellent:'#4ade80', best:'#2f7d45',
+      inaccuracy:'#f0d343', mistake:'#f3973e', blunder:'#ed4d4d', 'missed-win':'#ed4d4d', miss:'#f5a6b2',
+      checkmate:'#c5a2ff', book:'#b68a5a', good:'#c8d2c0'
     };
     function updateControls() {
       $('firstMove').disabled = !positions.length || selectedPly === 0;
@@ -334,6 +339,9 @@
       } catch { return false; }
     }
     function classifyMove(row, before, after, expectedLoss) {
+      const bestDetails = moveFromUci(row.before, before?.bestMove);
+      if (bestDetails) bestDetails.uci = before.bestMove;
+      row.missedOpportunity = detectMissedOpportunity({ row, before, after, bestMoveDetails:bestDetails });
       return classifyMoveQuality({ row, before, after, loss:expectedLoss, soundSacrifice:isSoundMaterialSacrifice(row,after) });
     }
     function moveFromUci(fen, uci) {
@@ -356,7 +364,7 @@
     // Keep classic text marks for most grades; Best, Excellent and Checkmate use inline vectors.
     const SUMMARY_MARKS = {
       book:'▤', brilliant:'!!', great:'!', good:'✓',
-      inaccuracy:'?', mistake:'?!', blunder:'??', 'missed-win':'?!'
+      inaccuracy:'?', mistake:'?!', blunder:'??', 'missed-win':'?!', miss:'X'
     };
     function iconFor(key) { return SUMMARY_MARKS[key] || ''; }
     function makeReviewVector(key) {
@@ -387,7 +395,7 @@
       if (vector) node.append(vector);
       else node.textContent = iconFor(key) || '·';
       node.setAttribute('aria-label', key || 'move');
-      node.setAttribute('title', ({best:'Best move', excellent:'Excellent move', checkmate:'Checkmate'})[key] || key || 'Move annotation');
+      node.setAttribute('title', ({best:'Best move', excellent:'Excellent move', checkmate:'Checkmate', miss:'Missed tactical opportunity'})[key] || key || 'Move annotation');
     }
     function showAnalysisSkeleton() {
       const detail = $('moveDetail'); detail.setAttribute('aria-busy','true');
@@ -606,13 +614,13 @@
         pill.title = 'Zugzwang estimate based on expected-score loss; not Chess.com’s proprietary accuracy formula.';
         summary.append(pill);
       }
-      const order = ['book','brilliant','best','great','excellent','good','inaccuracy','mistake','blunder','missed-win','checkmate'];
+      const order = ['book','brilliant','best','great','excellent','good','inaccuracy','mistake','blunder','missed-win','miss','checkmate'];
       for (const key of order) {
         const count = counts.get(key) || 0; if (!count) continue;
         const pill = document.createElement('span'); pill.className = 'summary-pill';
         const mark = document.createElement('span'); mark.className = 'mini-mark'; renderReviewIcon(mark,key);
         const label = document.createElement('span');
-        const names = { book:'Book',brilliant:'Brilliant',best:'Best',great:'Great',excellent:'Excellent',good:'Good',inaccuracy:'Inaccuracy',mistake:'Mistake',blunder:'Blunder','missed-win':'Missed win',checkmate:'Checkmate' };
+        const names = { book:'Book',brilliant:'Brilliant',best:'Best',great:'Great',excellent:'Excellent',good:'Good',inaccuracy:'Inaccuracy',mistake:'Mistake',blunder:'Blunder',miss:'Miss','missed-win':'Missed win',checkmate:'Checkmate' };
         label.textContent = ` ${names[key]} ${count}`; pill.append(mark,label); summary.append(pill);
       }
       summary.hidden = !summary.childElementCount;
@@ -692,7 +700,7 @@
           row.whiteEvalAfter = after.whiteScore;
           row.explanation = explanation(row.label,expectedLoss,rawPawnsLoss,bestSan,row.bestLineSan,replySan,row,after);
           row.evalText = row.checkmate ? (row.color === 'w' ? 'M0' : '−M0') : formatWhiteEvaluation(after);
-          for (const key of ['book','brilliant','best','great','excellent','good','inaccuracy','mistake','blunder','missed-win','checkmate']) {
+          for (const key of ['book','brilliant','best','great','excellent','good','inaccuracy','mistake','blunder','missed-win','miss','checkmate']) {
             row.moveButton.classList.remove('mark-' + key);
           }
           row.moveButton.classList.add('mark-' + row.label.key);

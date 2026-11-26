@@ -155,30 +155,72 @@ const LABELS = {
   inaccuracy: { key:'inaccuracy', icon:'?!', name:'Inaccuracy' },
   mistake: { key:'mistake', icon:'?', name:'Mistake' },
   blunder: { key:'blunder', icon:'??', name:'Blunder' },
-  missedWin: { key:'missed-win', icon:'??', name:'Missed win' },
+  missedWin: { key:'missed-win', icon:'?!', name:'Missed win' },
+  miss: { key:'miss', icon:'×', name:'Miss' },
   checkmate: { key:'checkmate', icon:'♔', name:'Checkmate' }
 };
 
 function classifyByExpectedLoss(loss) {
-  // Expected-points thresholds are useful near equality, but WDL saturates once
-  // a position is already decisively won or lost. Raw evaluation loss supplements it.
+  // Use wider bands than the previous build: small WDL changes are common at
+  // low depth and should not inflate the Blunder count.
   if (loss <= 0.02) return LABELS.excellent;
   if (loss <= 0.05) return LABELS.good;
-  if (loss <= 0.10) return LABELS.inaccuracy;
-  if (loss <= 0.20) return LABELS.mistake;
+  if (loss <= 0.12) return LABELS.inaccuracy;
+  if (loss <= 0.35) return LABELS.mistake;
   return LABELS.blunder;
 }
 
 const QUALITY_RANK = { excellent:0, good:1, inaccuracy:2, mistake:3, blunder:4 };
 
-function classifyByRawEvaluationLoss(rawLoss) {
+function classifyByRawEvaluationLoss(rawLoss, moverAfter, expectedLoss) {
   if (!Number.isFinite(rawLoss)) return null;
-  // Pawn-loss guardrails catch WDL saturation. A 2+ pawn deterioration is a
-  // serious tactical/positional collapse even if expected score barely changes.
-  if (rawLoss >= 2.0) return LABELS.blunder;
-  if (rawLoss >= 1.0) return LABELS.mistake;
-  if (rawLoss >= 0.5) return LABELS.inaccuracy;
-  if (rawLoss >= 0.3) return LABELS.good;
+  // Raw centipawn jumps can be noisy, especially in already-decided positions.
+  // Only use them as a guardrail for large, meaningful swings; don't turn every
+  // 1-2 pawn fluctuation into a mistake or blunder.
+  if (rawLoss >= 4.0) {
+    if (moverAfter <= 0.5) return LABELS.blunder;
+    if (moverAfter <= 2.5) return LABELS.mistake;
+    return LABELS.inaccuracy;
+  }
+  if (rawLoss >= 2.5 && expectedLoss >= 0.10) return LABELS.mistake;
+  if (rawLoss >= 1.5 && expectedLoss >= 0.05) return LABELS.inaccuracy;
+  if (rawLoss >= 0.8 && expectedLoss >= 0.025) return LABELS.good;
+  return null;
+}
+
+/**
+ * Detect a genuine missed tactical opportunity.
+ * bestMoveDetails is a legal chess.js verbose move generated from before.bestMove.
+ * We only call it a Miss when the engine's best move wins at least a minor piece
+ * or there was a forced mate, and the played move fails to preserve that chance.
+ */
+export function detectMissedOpportunity({ row, before, after, bestMoveDetails } = {}) {
+  if (!row || row.checkmate || !bestMoveDetails || bestMoveDetails.uci === row.uci) return null;
+
+  const afterAllowsOpponentMate = after?.score?.type === 'mate' && Number(after.score.value) > 0;
+  if (afterAllowsOpponentMate) return null;
+
+  const moverStillHasForcedMate = after?.score?.type === 'mate' && Number(after.score.value) < 0;
+  const hadForcedMate = before?.score?.type === 'mate'
+    && Number(before.score.value) > 0
+    && before.turn === row.color;
+  if (((bestMoveDetails.san || '').includes('#') || hadForcedMate) && !moverStillHasForcedMate) {
+    return { type:'mate', san:bestMoveDetails.san || '', mateIn:hadForcedMate ? Number(before.score.value) : 1 };
+  }
+
+  const pieceValues = { p:1, n:3, b:3, r:5, q:9, k:100 };
+  const wonPiece = String(bestMoveDetails.captured || '').toLowerCase();
+  const playedCapture = String(row.move?.captured || '').toLowerCase();
+  const missedValue = pieceValues[wonPiece] || 0;
+  const actualValue = pieceValues[playedCapture] || 0;
+  if (missedValue >= 3 && missedValue > actualValue) {
+    return {
+      type:'piece',
+      piece:wonPiece,
+      square:bestMoveDetails.to || '',
+      bestSan:bestMoveDetails.san || ''
+    };
+  }
   return null;
 }
 
@@ -195,8 +237,13 @@ export function classifyMoveQuality({ row, before, after, loss, soundSacrifice =
     ? null
     : calculateMoveLoss(before, after, row?.color);
   // After the player's move it is the opponent's turn. A positive mate score means
-  // that side (the opponent) can force mate, so a queen-capture safeguard must not apply.
+  // that side (the opponent) can force mate, so neither a queen-capture guard nor
+  // a missed-opportunity tag may disguise a forced mating refutation.
   const opponentHasForcedMate = after?.score?.type === 'mate' && Number(after.score.value) > 0;
+
+  if (!opponentHasForcedMate && row?.missedOpportunity) {
+    return { ...LABELS.miss, effectiveLoss:loss, queenCaptureProtected:false, rawLoss, missedOpportunity:row.missedOpportunity };
+  }
 
   if (!opponentHasForcedMate && moverBefore >= 2.5 && (moverAfter <= 0.5 || (Number.isFinite(moverAfterExpected) && moverAfterExpected <= 0.5))) {
     return { ...LABELS.missedWin, effectiveLoss:loss, queenCaptureProtected:false, rawLoss };
@@ -205,25 +252,24 @@ export function classifyMoveQuality({ row, before, after, loss, soundSacrifice =
   // A queen capture is not automatically good: an immediate forced mate or a
   // position that still favours the opponent remains eligible for a blunder.
   // But if best play leaves the capturer with a clear expected-score advantage,
-  // retain the queen-capture safeguard even when WDL/centipawn curves disagree.
+  // don't let a saturated WDL estimate call a real queen win a blunder.
   const queenCaptureProtected = row?.move?.captured === 'q'
     && !opponentHasForcedMate
     && Number.isFinite(moverAfterExpected)
     && moverAfterExpected >= 0.70;
   const effectiveLoss = queenCaptureProtected ? Math.min(loss, 0.095) : loss;
   const expectedGrade = classifyByExpectedLoss(effectiveLoss);
-  const rawGrade = queenCaptureProtected ? null : classifyByRawEvaluationLoss(rawLoss);
+  const rawGrade = queenCaptureProtected || bestMatch
+    ? null
+    : classifyByRawEvaluationLoss(rawLoss, moverAfter, effectiveLoss);
 
-  // Do not let an apparently tiny WDL loss turn a 2–4 pawn deterioration into
-  // Excellent. Keep the queen-capture protection above, and trust a direct engine
-  // best-move match rather than noisy between-position score differences.
-  if (!queenCaptureProtected && !bestMatch && rawGrade && QUALITY_RANK[rawGrade.key] > QUALITY_RANK[expectedGrade.key]) {
+  if (rawGrade && QUALITY_RANK[rawGrade.key] > QUALITY_RANK[expectedGrade.key]) {
     return { ...rawGrade, effectiveLoss, queenCaptureProtected, rawLoss, gradingBasis:'raw-evaluation' };
   }
   if (bestMatch && soundSacrifice && moverBefore < 2.0 && moverAfter > -0.25) {
     return { ...LABELS.brilliant, effectiveLoss, queenCaptureProtected, rawLoss };
   }
-  if (row?.legalMoveCount === 1 && effectiveLoss <= 0.10 && !rawGrade) {
+  if (row?.legalMoveCount === 1 && effectiveLoss <= 0.12 && !rawGrade) {
     return { ...LABELS.great, effectiveLoss, queenCaptureProtected, rawLoss };
   }
   if (bestMatch) return { ...LABELS.best, effectiveLoss, queenCaptureProtected, rawLoss };
@@ -326,7 +372,7 @@ export function explainMoveQuality({ row, label, loss, rawPawnsLoss, bestSan, be
   const positionText = positionPhrase(after, row.color);
   const opponentHasForcedMate = after?.score?.type === 'mate' && Number(after.score.value) > 0;
 
-  if (label.key === 'blunder' && Number.isFinite(rawPawnsLoss) && rawPawnsLoss >= 2) {
+  if (label.key === 'blunder' && Number.isFinite(rawPawnsLoss) && rawPawnsLoss >= 4) {
     const expectedText = formatExpectedPointsLoss(loss);
     const wdlContext = Number.isFinite(loss) && loss <= 0.02
       ? `Expected-score loss is only ${expectedText} because the opponent was already overwhelmingly better; the WDL estimate is saturated and hides the damage.`
@@ -367,6 +413,12 @@ export function explainMoveQuality({ row, label, loss, rawPawnsLoss, bestSan, be
   }
   if (label.key === 'mistake') {
     return `${intent} This is a meaningful error, losing about ${pointsText} of expected score. ${positionText}${alternative}${continuation}${reply}`;
+  }
+  if (label.key === 'miss') {
+    const opportunity = row.missedOpportunity || {};
+    if (opportunity.type === 'mate') return `${intent} Miss: a forced checkmate was available (${opportunity.san || bestSan || 'mating continuation'}), but this move lets the mate escape.${alternative}${continuation}${reply}`;
+    const piece = pieceName(opportunity.piece || 'piece');
+    return `${intent} Miss: the opponent left a ${piece} available to win on ${opportunity.square || 'the board'}, but you chose another move. The engine's best move was ${opportunity.bestSan || bestSan || 'the capture'}.${continuation}${reply}`;
   }
   if (label.key === 'missed-win') {
     return `${intent} The position contained a winning continuation, but this move lets the opponent escape with a much better result.${alternative}${continuation}${reply}`;
