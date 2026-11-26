@@ -61,3 +61,21 @@ test('SQL completion is per-player, idempotent and withholds points after a wron
   assert.match(schema, /if v_status = 'failed' or not p_clean_attempt then[\s\S]*?rating_change = 0[\s\S]*?attempt_had_mistake/i);
   assert.match(schema, /update public\.profiles set puzzle_rating = puzzle_rating \+ v_delta/i);
 });
+
+
+test('solution arrow is slightly smaller and keeps its move direction clear', () => {
+  assert.match(board, /stroke-width', '15'/);
+  assert.match(board, /markerWidth', '6'/);
+  assert.match(board, /markerHeight', '6'/);
+});
+
+test('successful puzzle rating rolls upward before the next puzzle loads automatically', () => {
+  assert.match(page, /rating-digit-strip/);
+  assert.match(page, /renderPuzzleRating\(data\.rating,[\s\S]*?animate:\s*Boolean\(data\.awarded/);
+  assert.match(page, /function scheduleNextPuzzle\(delay = 1900\)/);
+  assert.match(page, /scheduleNextPuzzle\(advanceDelay\)/);
+  assert.match(page, /autoAdvanceTimer = setTimeout\([\s\S]*?void loadPuzzle\(\)/);
+  assert.match(page, /\$\('range'\)\.disabled = phase === 'loading' \|\| savingResult/);
+  assert.match(page, /aria-label',? `\$\{rating\.toLocaleString\(\)\} puzzle rating`/);
+  assert.match(page, /Next puzzle · \$\{seconds\}s/);
+});

@@ -121,15 +121,15 @@ export class ZugzwangBoard {
     const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
     const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
     marker.setAttribute('id', 'zz-puzzle-arrow-head'); marker.setAttribute('viewBox', '0 0 10 10');
-    marker.setAttribute('refX', '8'); marker.setAttribute('refY', '5'); marker.setAttribute('markerWidth', '7');
-    marker.setAttribute('markerHeight', '7'); marker.setAttribute('orient', 'auto-start-reverse');
+    marker.setAttribute('refX', '8'); marker.setAttribute('refY', '5'); marker.setAttribute('markerWidth', '6');
+    marker.setAttribute('markerHeight', '6'); marker.setAttribute('orient', 'auto-start-reverse');
     const head = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     head.setAttribute('d', 'M 0 0 L 10 5 L 0 10 z'); head.setAttribute('fill', '#ffe16b');
     marker.appendChild(head); defs.appendChild(marker); svg.appendChild(defs);
     const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
     line.setAttribute('x1', String(a.x)); line.setAttribute('y1', String(a.y));
     line.setAttribute('x2', String(b.x)); line.setAttribute('y2', String(b.y));
-    line.setAttribute('stroke', '#ffe16b'); line.setAttribute('stroke-width', '17');
+    line.setAttribute('stroke', '#ffe16b'); line.setAttribute('stroke-width', '15');
     line.setAttribute('stroke-linecap', 'round'); line.setAttribute('marker-end', 'url(#zz-puzzle-arrow-head)');
     line.setAttribute('opacity', '.94'); svg.appendChild(line);
     this.root.appendChild(svg);

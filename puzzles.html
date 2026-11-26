@@ -41,7 +41,16 @@
     .panel h2 { margin:0 0 12px; font-size:1rem; letter-spacing:-.015em; }
     .rating-card { background:linear-gradient(145deg,rgba(129,182,76,.12),transparent 68%),var(--panel); }
     .rating-line { display:flex; align-items:flex-end; justify-content:space-between; gap:8px; }
-    .rating-number { color:#a8d878; font-size:2.5rem; font-weight:900; line-height:1; letter-spacing:-.05em; font-variant-numeric:tabular-nums; }
+    .rating-number { color:#a8d878; font-size:2.5rem; font-weight:900; line-height:1; letter-spacing:-.05em; font-variant-numeric:tabular-nums; min-height:1.05em; }
+    .rating-score-row { display:flex; align-items:center; gap:12px; position:relative; min-height:3rem; }
+    .rating-digit-window { display:inline-block; height:1.05em; width:.62em; overflow:hidden; vertical-align:top; }
+    .rating-digit-strip { display:flex; flex-direction:column; will-change:transform; transition:transform 950ms cubic-bezier(.19,.72,.25,1); }
+    .rating-digit-strip span { display:block; height:1.05em; line-height:1.05em; text-align:center; }
+    .rating-comma { display:inline-block; width:.28em; text-align:center; }
+    .rating-delta { color:#b9e78a; font-size:1rem; font-weight:900; text-shadow:0 2px 10px rgba(129,182,76,.25); }
+    .rating-delta.play { animation:rating-delta-rise 1.45s ease-out both; }
+    @keyframes rating-delta-rise { 0% { opacity:0; transform:translateY(12px) scale(.9); } 18% { opacity:1; transform:translateY(0) scale(1); } 100% { opacity:0; transform:translateY(-24px) scale(1.04); } }
+    @media(prefers-reduced-motion:reduce) { .rating-digit-strip { transition:none !important; } .rating-delta.play { animation:none; opacity:1; } }
     .private-tag { color:#b5d18d; border:1px solid #526b3f; border-radius:5px; padding:3px 7px; font-size:.68rem; font-weight:850; letter-spacing:.07em; text-transform:uppercase; }
     .muted { color:var(--muted); font-size:.86rem; }
     .rating-note { margin:10px 0 0; }
@@ -102,7 +111,7 @@
       <aside class="aside">
         <section class="panel rating-card">
           <div class="rating-line"><h2>Your puzzle rating</h2><span class="private-tag">Private</span></div>
-          <div class="rating-number" id="rating">—</div>
+          <div class="rating-score-row"><div class="rating-number" id="rating" aria-label="Puzzle rating">—</div><span class="rating-delta hidden" id="ratingDelta" aria-live="polite"></span></div>
           <p class="muted rating-note" id="ratingNote">Your puzzle rating is only visible to you. Solve a puzzle on your first try to earn +5.</p>
           <a class="login-link hidden" id="loginLink" href="/login.html?next=/puzzles.html">Log in to save your rating →</a>
         </section>
@@ -153,12 +162,96 @@
     let hintSquare = null;
     let solutionArrow = null;
     let savingResult = false;
+    let puzzleRatingValue = null;
+    let autoAdvanceTimer = null;
+    let autoAdvanceInterval = null;
 
     function authHeaders(json = false) {
       const headers = {};
       if (json) headers['Content-Type'] = 'application/json';
       if (ZZ?.session?.access_token) headers.Authorization = 'Bearer ' + ZZ.session.access_token;
       return headers;
+    }
+    function clearAutoAdvance() {
+      if (autoAdvanceTimer) clearTimeout(autoAdvanceTimer);
+      if (autoAdvanceInterval) clearInterval(autoAdvanceInterval);
+      autoAdvanceTimer = null;
+      autoAdvanceInterval = null;
+    }
+    function renderPuzzleRating(value, { from = null, animate = false, delta = 0 } = {}) {
+      const rating = Math.max(0, Math.round(Number(value)));
+      if (!Number.isFinite(rating)) return;
+      puzzleRatingValue = rating;
+      const targetText = String(rating);
+      const groupSeparator = new Intl.NumberFormat().formatToParts(1000).find((part) => part.type === 'group')?.value || ',';
+      const root = $('rating');
+      const deltaBadge = $('ratingDelta');
+      root.setAttribute('aria-label', `${rating.toLocaleString()} puzzle rating`);
+      deltaBadge.classList.add('hidden');
+      deltaBadge.classList.remove('play');
+
+      const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      if (!animate || reducedMotion || !Number.isFinite(Number(from))) {
+        root.textContent = rating.toLocaleString();
+      } else {
+        const oldText = String(Math.max(0, Math.round(Number(from))));
+        const width = Math.max(oldText.length, targetText.length);
+        const oldDigits = oldText.padStart(width, '0');
+        const newDigits = targetText.padStart(width, '0');
+        root.replaceChildren();
+        root.setAttribute('aria-label', `${rating.toLocaleString()} puzzle rating`);
+        const strips = [];
+        for (let index = 0; index < width; index++) {
+          if (index > 0 && (width - index) % 3 === 0) {
+            const comma = document.createElement('span');
+            comma.className = 'rating-comma';
+            comma.textContent = groupSeparator;
+            root.appendChild(comma);
+          }
+          const oldDigit = Number(oldDigits[index]);
+          const newDigit = Number(newDigits[index]);
+          const windowEl = document.createElement('span');
+          windowEl.className = 'rating-digit-window';
+          windowEl.setAttribute('aria-hidden', 'true');
+          const strip = document.createElement('span');
+          strip.className = 'rating-digit-strip';
+          for (let wheel = 0; wheel < 30; wheel++) {
+            const digit = document.createElement('span');
+            digit.textContent = String(wheel % 10);
+            strip.appendChild(digit);
+          }
+          const startIndex = 10 + oldDigit;
+          const forwardSteps = (newDigit - oldDigit + 10) % 10;
+          strip.style.transform = `translateY(-${startIndex * 1.05}em)`;
+          strip.style.transitionDelay = `${(width - index - 1) * 45}ms`;
+          windowEl.appendChild(strip);
+          root.appendChild(windowEl);
+          strips.push({ strip, endIndex: startIndex + forwardSteps });
+        }
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          for (const item of strips) item.strip.style.transform = `translateY(-${item.endIndex * 1.05}em)`;
+        }));
+      }
+
+      if (Number(delta) > 0) {
+        deltaBadge.textContent = `+${Number(delta)}`;
+        deltaBadge.classList.remove('hidden');
+        requestAnimationFrame(() => deltaBadge.classList.add('play'));
+      }
+    }
+    function scheduleNextPuzzle(delay = 1900) {
+      clearAutoAdvance();
+      const endsAt = Date.now() + delay;
+      const updateLabel = () => {
+        const seconds = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+        $('next').textContent = seconds ? `Next puzzle · ${seconds}s ↗` : 'Loading next puzzle…';
+      };
+      updateLabel();
+      autoAdvanceInterval = setInterval(updateLabel, 250);
+      autoAdvanceTimer = setTimeout(() => {
+        clearAutoAdvance();
+        void loadPuzzle();
+      }, delay);
     }
 
     function recentIds() {
@@ -199,7 +292,8 @@
       $('retry').classList.toggle('hidden', phase !== 'failed');
       $('hint').disabled = !playing || !solution[step];
       $('solution').disabled = !playing || !solution[step];
-      $('next').disabled = phase === 'loading';
+      $('next').disabled = phase === 'loading' || savingResult;
+      $('range').disabled = phase === 'loading' || savingResult;
     }
     function render() {
       if (!chess) {
@@ -228,7 +322,9 @@
     }
     async function loadPrivateRating() {
       if (!ZZ?.session?.access_token) {
+        puzzleRatingValue = null;
         $('rating').textContent = '—';
+        $('ratingDelta').classList.add('hidden');
         $('ratingNote').textContent = 'Your puzzle rating is private. Log in to create and save yours.';
         $('loginLink').classList.remove('hidden');
         return;
@@ -238,14 +334,17 @@
         const response = await fetch('/api/puzzles/stats', { headers: authHeaders() });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Could not load your puzzle rating.');
-        $('rating').textContent = Number(data.rating).toLocaleString();
+        renderPuzzleRating(data.rating);
         $('ratingNote').textContent = 'Only you can see this rating. Earn +5 for each puzzle solved without a wrong move.';
       } catch (error) {
+        puzzleRatingValue = null;
         $('rating').textContent = '—';
         $('ratingNote').textContent = error.message;
       }
     }
     async function loadPuzzle() {
+      clearAutoAdvance();
+      $('next').textContent = 'New puzzle ↗';
       phase = 'loading';
       puzzle = null; chess = null; solution = []; step = 0; selected = null; targets = []; lastMove = [];
       failedAttempt = false; hintUsed = false; hintSquare = null; solutionArrow = null; savingResult = false;
@@ -300,26 +399,44 @@
     async function saveCompletion() {
       if (savingResult) return;
       savingResult = true;
+      updateControls();
+      let advanceDelay = 1900;
       if (!ZZ?.session?.access_token) {
-        setStatus('Puzzle solved!', 'Log in to save a private puzzle rating. Guests can still practise.', 'success');
+        setStatus('Puzzle solved!', 'Log in to save a private puzzle rating. Loading your next puzzle shortly.', 'success');
         savingResult = false;
+        updateControls();
+        scheduleNextPuzzle(advanceDelay);
         return;
       }
       try {
+        const previousRating = puzzleRatingValue;
         const response = await fetch('/api/puzzles/complete', {
           method: 'POST', headers: authHeaders(true),
           body: JSON.stringify({ puzzleId: puzzle.puzzle_id, cleanAttempt: !failedAttempt }), signal: AbortSignal.timeout(8000)
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Your result could not be saved.');
-        if (Number.isFinite(Number(data.rating))) $('rating').textContent = Number(data.rating).toLocaleString();
-        if (data.awarded) setStatus('Puzzle solved!', `Great work. Your private puzzle rating increased by +${data.delta}.`, 'success');
-        else if (data.reason === 'attempt_had_mistake') setStatus('Puzzle solved on retry', 'You found the solution. No rating points this time because an earlier move was incorrect.', 'success');
-        else if (data.reason === 'already_completed') setStatus('Puzzle solved!', 'You have already earned the rating for this puzzle.', 'success');
-        else setStatus('Puzzle solved!', 'Your solution is complete.', 'success');
+        if (Number.isFinite(Number(data.rating))) {
+          const delta = Number(data.delta) || 0;
+          const animationStart = Number.isFinite(previousRating) ? previousRating : Number(data.rating) - delta;
+          renderPuzzleRating(data.rating, {
+            from: animationStart,
+            animate: Boolean(data.awarded && delta > 0),
+            delta: data.awarded ? delta : 0
+          });
+        }
+        if (data.awarded) setStatus('Puzzle solved!', `Great work! Your private puzzle rating increased by ${Number(data.delta) > 0 ? `+${data.delta}` : 'some points'}. Your next puzzle is coming up.`, 'success');
+        else if (data.reason === 'attempt_had_mistake') setStatus('Puzzle solved on retry', 'You found the solution. No rating points this time because an earlier move was incorrect. Your next puzzle is coming up.', 'success');
+        else if (data.reason === 'already_completed') setStatus('Puzzle solved!', 'You have already earned the rating for this puzzle. Loading your next one.', 'success');
+        else setStatus('Puzzle solved!', 'Your solution is complete. Loading your next puzzle.', 'success');
       } catch (error) {
-        setStatus('Puzzle solved, rating not saved', error.message + ' Your solution is complete; continue to the next puzzle.', 'error');
-      } finally { savingResult = false; }
+        advanceDelay = 3000;
+        setStatus('Puzzle solved, rating not saved', error.message + ' Your solution is complete. You can continue to the next puzzle.', 'error');
+      } finally {
+        savingResult = false;
+        updateControls();
+        if (phase === 'solved') scheduleNextPuzzle(advanceDelay);
+      }
     }
     async function failAttempt() {
       failedAttempt = true;
