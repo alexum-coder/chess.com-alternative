@@ -74,7 +74,9 @@
     .book-tags { display:flex; flex-wrap:wrap; gap:5px; margin-top:7px; }
     .book-tag { padding:3px 6px; border-radius:4px; background:#3b4836; color:#c9e6b4; font-size:.68rem; font-weight:800; }
     .review-icon { display:inline-grid; place-items:center; width:27px; height:27px; flex:0 0 27px; border-radius:50%; background:#41403b; color:#d7d4cc; }
-    .review-icon svg { width:16px; height:16px; display:block; fill:none; stroke:currentColor; stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round; }
+    .review-icon.review-glyph { font-size:15px; font-weight:900; line-height:1; letter-spacing:-.04em; text-align:center; white-space:nowrap; }
+    .mini-mark.review-glyph { font-size:11px; font-weight:900; line-height:1; letter-spacing:-.06em; text-align:center; white-space:nowrap; }
+    .mini-mark.review-glyph[aria-label=excellent] { font-size:12px; }
     .mini-mark { display:inline-grid; place-items:center; flex:0 0 17px; width:17px; height:17px; }
     .mini-mark svg { width:14px; height:14px; display:block; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
     .mini-mark.pending { width:11px; height:11px; margin:0 3px; border-radius:50%; background:#494741; position:relative; overflow:hidden; }
@@ -326,28 +328,18 @@
       else if (replyMove?.san?.includes('+')) replyTacticalText = `The opponent's best reply ${replySan} comes with check.`;
       return explainMoveQuality({ row, label, loss:expectedLoss, rawPawnsLoss, bestSan, bestLineSan, replySan, after, replyCapturesMovedPiece, replyTacticalText });
     }
-    const ICON_PATHS = {
-      book: '<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21z"/><path d="M4 5.5v13A2.5 2.5 0 0 1 6.5 16H20M8 7h8M8 10h7"/>',
-      brilliant: '<path d="m12 2 2.1 6.2L20 11l-5.9 2.2L12 20l-2.1-6.8L4 11l5.9-2.8z"/><path d="m19 16 .8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/>',
-      best: '<circle cx="12" cy="12" r="9"/><path d="m7.5 12.2 3 3 6-6.2"/>',
-      great: '<path d="m12 2.8 2.8 5.7 6.3.9-4.6 4.5 1.1 6.3-5.6-3-5.6 3 1.1-6.3-4.6-4.5 6.3-.9z"/>',
-      excellent: '<path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="m19 15 .8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/>',
-      good: '<circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16.5 9"/>',
-      inaccuracy: '<path d="M12 3 22 20H2z"/><path d="M12 9v5M12 17.2h.01"/>',
-      mistake: '<circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.8h.01"/>',
-      blunder: '<path d="M8 3h8l5 5v8l-5 5H8l-5-5V8z"/><path d="m9 9 6 6m0-6-6 6"/>',
-      'missed-win': '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5M9 2h6M12 2v3M19 5l1.5-1.5"/>',
-      checkmate: '<path d="m5 9 2-5 5 3 5-3 2 5-3 4H8z"/><path d="M8 13h8l1 4H7zM6 20h12"/>'
+    // Use the familiar chess-review glyphs as plain text, not SVG artwork or emoji
+    // assets. Text glyphs render consistently in move lists, summaries and detail cards.
+    const SUMMARY_MARKS = {
+      book:'▤', brilliant:'!!', best:'*', great:'!', excellent:'👍', good:'✓',
+      inaccuracy:'?', mistake:'?!', blunder:'??', 'missed-win':'?!', checkmate:'#'
     };
-    const SUMMARY_MARKS = { book:'▤',brilliant:'✧',best:'✓',great:'★',excellent:'✦',good:'●',inaccuracy:'!',mistake:'⚠',blunder:'×','missed-win':'◷',checkmate:'♚' };
-    function iconFor(key) { return SUMMARY_MARKS[key] || '·'; }
+    function iconFor(key) { return SUMMARY_MARKS[key] || ''; }
     function renderReviewIcon(node, key) {
       node.replaceChildren();
-      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.setAttribute('viewBox','0 0 24 24'); svg.setAttribute('aria-hidden','true');
-      const group = document.createElementNS('http://www.w3.org/2000/svg','g');
-      group.innerHTML = ICON_PATHS[key] || ICON_PATHS.good;
-      svg.append(group); node.append(svg);
+      node.classList.add('review-glyph');
+      node.textContent = iconFor(key) || '·';
+      node.setAttribute('aria-label', key || 'move');
     }
     function showAnalysisSkeleton() {
       const detail = $('moveDetail'); detail.setAttribute('aria-busy','true');

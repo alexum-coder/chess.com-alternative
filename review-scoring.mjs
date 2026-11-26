@@ -338,5 +338,5 @@ export function explainMoveQuality({ row, label, loss, rawPawnsLoss, bestSan, be
     return `${intent} The position contained a winning continuation, but this move lets the opponent escape with a much better result.${alternative}${continuation}${reply}`;
   }
   const rawNote = Number.isFinite(rawPawnsLoss) && rawPawnsLoss >= 1 ? ` The raw evaluation also shifted by ${rawPawnsLoss.toFixed(1)} pawns.` : '';
-  return `${intent} This is a serious error, losing about ${pointsText} of expected score. ${positionText}${rawNote}${alternative}${continuation}${reply}${tacticalDetail}`;
+  return `${intent} This is a serious error, losing about ${pointsText} of expected score. ${positionText}${rawNote}${alternative}${continuation}${reply}`;
 }

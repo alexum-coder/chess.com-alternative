@@ -25,9 +25,11 @@ test('review displays a skeleton while automatic Stockfish analysis is pending',
   assert.match(html, /void runAnalysis\(\)/);
 });
 
-test('review uses distinct SVG icons for the move classifications', () => {
-  for (const key of ['book','brilliant','best','great','excellent','good','inaccuracy','mistake','blunder','missed-win','checkmate']) {
-    assert.ok(html.includes(`${key}:`) || html.includes(`'${key}':`), `expected SVG icon for ${key}`);
+test('review uses the requested classic chess move glyphs as plain text', () => {
+  for (const [key, glyph] of Object.entries({ brilliant:'!!', great:'!', excellent:'👍', best:'*', inaccuracy:'?', mistake:'?!', blunder:'??' })) {
+    assert.ok(html.includes(`${key}:'${glyph}'`), `expected classic ${glyph} mark for ${key}`);
   }
   assert.match(html, /function renderReviewIcon\(/);
+  assert.match(html, /node\.textContent = iconFor\(key\)/);
+  assert.doesNotMatch(html, /const ICON_PATHS/);
 });
