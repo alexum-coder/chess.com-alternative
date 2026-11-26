@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test test/*.test.js test/*.test.mjs",
-    "check": "node --check server.js && node --check review-scoring.mjs && node --check glicko2.js && node --check stockfish-analyzer.js && node --check engine-review.js && node --check tournament-recovery.js && node --check rating-status.js && node --check nav.js && node --check puzzle-import.js && node --check scripts/upload-stockfish-storage.js && node --check scripts/upload-native-stockfish.js && node --input-type=module --check < board.js",
+    "check": "node --check server.js && node --check review-scoring.mjs && node --check glicko2.js && node --check stockfish-analyzer.js && node --check engine-review.js && node --check tournament-recovery.js && node --check rating-status.js && node --check nav.js && node --check puzzle-import.js && node --check puzzle-utils.js && node --check scripts/upload-stockfish-storage.js && node --check scripts/upload-native-stockfish.js && node --input-type=module --check < board.js",
     "import:puzzles": "node puzzle-import.js",
     "upload:stockfish": "node scripts/upload-stockfish-storage.js",
     "upload:stockfish-native": "node scripts/upload-native-stockfish.js"

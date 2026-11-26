@@ -12,6 +12,7 @@ const { createGunzip } = require('node:zlib');
 const { updateGlicko2 } = require('./glicko2');
 const { StockfishAnalyzer } = require('./stockfish-analyzer');
 const { reviewGameMoves } = require('./engine-review');
+const { validatePuzzleRecord, puzzleRatingRange } = require('./puzzle-utils');
 const { serializeTournamentGame, restoreChess, hydrateTournamentState } = require('./tournament-recovery');
 const { RATING_PLACEMENT_GAMES, publicPlayer } = require('./rating-status');
 const db = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY
@@ -124,6 +125,53 @@ function allowRate(key, max, windowMs) {
 
 
 app.use(express.json());
+
+// Private puzzle progress and rating. All reads/writes are performed by the server
+// with the service role; the browser never receives access to another player's rating.
+app.get('/api/puzzles/stats', async (req, res) => {
+  const acct = await requireAccount(req, res);
+  if (!acct) return;
+  const { data, error } = await db.from('profiles').select('puzzle_rating').eq('id', acct.id).single();
+  if (error) {
+    console.error('Private puzzle rating lookup failed:', error.message);
+    return res.status(500).json({ error: 'Could not load your puzzle rating. Run the latest puzzle rating SQL migration.' });
+  }
+  res.set('Cache-Control', 'private, no-store');
+  res.json({ rating: Number(data.puzzle_rating) || 1200 });
+});
+
+app.post('/api/puzzles/miss', async (req, res) => {
+  const acct = await requireAccount(req, res);
+  if (!acct) return;
+  if (!allowRate(`puzzle-miss:${acct.id}`, 90, 60_000)) return res.status(429).json({ error: 'Too many puzzle attempts. Take a short break and try again.' });
+  const puzzleId = String(req.body?.puzzleId || '').trim();
+  if (!/^[a-zA-Z0-9_-]{1,32}$/.test(puzzleId)) return res.status(400).json({ error: 'Invalid puzzle.' });
+  const { error } = await db.rpc('record_puzzle_miss', { p_player_id: acct.id, p_puzzle_id: puzzleId });
+  if (error) {
+    console.error('Puzzle miss save failed:', error.message);
+    return res.status(error.code === '23503' ? 404 : 500).json({ error: 'Could not save this puzzle attempt.' });
+  }
+  res.json({ saved: true });
+});
+
+app.post('/api/puzzles/complete', async (req, res) => {
+  const acct = await requireAccount(req, res);
+  if (!acct) return;
+  if (!allowRate(`puzzle-complete:${acct.id}`, 45, 60_000)) return res.status(429).json({ error: 'Too many puzzle completions. Try again shortly.' });
+  const puzzleId = String(req.body?.puzzleId || '').trim();
+  if (!/^[a-zA-Z0-9_-]{1,32}$/.test(puzzleId)) return res.status(400).json({ error: 'Invalid puzzle.' });
+  const cleanAttempt = req.body?.cleanAttempt === true;
+  const { data, error } = await db.rpc('complete_puzzle', {
+    p_player_id: acct.id, p_puzzle_id: puzzleId, p_clean_attempt: cleanAttempt
+  });
+  if (error) {
+    console.error('Puzzle completion save failed:', error.message);
+    return res.status(error.code === '23503' ? 404 : 500).json({ error: 'Could not save your puzzle result.' });
+  }
+  res.set('Cache-Control', 'private, no-store');
+  res.json(data || { awarded: false, delta: 0, reason: 'unknown', rating: null });
+});
+
 app.get('/api/me', async (req, res) => {
   if (!db) return res.status(503).json({ error: 'Accounts are not set up.' });
   try {
@@ -414,18 +462,73 @@ app.get('/api/health', async (req, res) => {
 });
 
 // Public CC0 puzzle pool imported from the Lichess puzzle CSV (see puzzle-import.js).
+// Keyset sampling avoids COUNT(*) + a potentially enormous random OFFSET on every request.
+const PUZZLE_ID_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+function randomPuzzleCursor() {
+  return Array.from({ length: 8 }, () => PUZZLE_ID_CHARS[crypto.randomInt(PUZZLE_ID_CHARS.length)]).join('');
+}
 app.get('/api/puzzles/random', async (req, res) => {
   if (!db) return res.status(503).json({ error: 'Puzzle database is not configured.' });
-  const min = Math.max(0, Math.min(3000, Number(req.query.min) || 0));
-  const max = Math.max(min, Math.min(3500, Number(req.query.max) || 3500));
-  const filter = (q) => q.gte('rating', min).lte('rating', max);
-  const { count, error: countError } = await filter(db.from('puzzles').select('puzzle_id', { count: 'exact', head: true }));
-  if (countError) { console.error('/api/puzzles/random count query failed:', countError); return res.status(500).json({ error: 'Could not load puzzles.' }); }
-  if (!count) return res.status(404).json({ error: 'No puzzles in this rating range. Import the Lichess CC0 puzzle database first.' });
-  const offset = Math.floor(Math.random() * count);
-  const { data, error } = await filter(db.from('puzzles').select('puzzle_id,fen,moves,rating,themes')).range(offset, offset);
-  if (error || !data?.length) { if (error) console.error('/api/puzzles/random fetch failed:', error); return res.status(500).json({ error: 'Could not load a puzzle.' }); }
-  res.json(data[0]);
+
+  let playerPuzzleRating = 1200;
+  if (req.query.recommended === '1' && bearer(req)) {
+    try {
+      const acct = await accountFor(bearer(req));
+      const { data } = await db.from('profiles').select('puzzle_rating').eq('id', acct.id).maybeSingle();
+      if (data?.puzzle_rating != null) playerPuzzleRating = Number(data.puzzle_rating) || 1200;
+    } catch { /* Guests get the default recommended band. */ }
+  }
+
+  let range;
+  try {
+    const hasManualRange = req.query.min !== undefined || req.query.max !== undefined;
+    range = hasManualRange
+      ? puzzleRatingRange(playerPuzzleRating, req.query.min, req.query.max)
+      : puzzleRatingRange(playerPuzzleRating);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Invalid puzzle rating range.' });
+  }
+
+  const excluded = new Set(String(req.query.exclude || '').split(',').map((id) => id.trim()).filter((id) => /^[a-zA-Z0-9_-]{1,32}$/.test(id)).slice(0, 30));
+  const fields = 'puzzle_id,fen,moves,rating,themes';
+  let cursor = randomPuzzleCursor();
+  let wrapped = false;
+  let ignoreRecent = false;
+  let inspected = 0;
+  const batchSize = 12;
+
+  for (let batchNo = 0; batchNo < 12 && inspected < 120; batchNo++) {
+    let query = db.from('puzzles').select(fields)
+      .gte('rating', range.min).lte('rating', range.max)
+      .order('puzzle_id', { ascending: true }).limit(batchSize);
+    if (cursor) query = query.gt('puzzle_id', cursor);
+    const { data, error } = await query;
+    if (error) {
+      console.error('/api/puzzles/random keyset query failed:', error.message);
+      return res.status(500).json({ error: 'Could not load a puzzle.' });
+    }
+    if (!data?.length) {
+      if (!wrapped) { wrapped = true; cursor = null; continue; }
+      if (!ignoreRecent && excluded.size) { ignoreRecent = true; wrapped = false; cursor = randomPuzzleCursor(); continue; }
+      break;
+    }
+
+    for (const candidate of data) {
+      cursor = candidate.puzzle_id;
+      inspected++;
+      if (!ignoreRecent && excluded.has(candidate.puzzle_id)) continue;
+      if (!validatePuzzleRecord(candidate)) {
+        console.warn(`Skipping malformed puzzle ${candidate.puzzle_id || '(unknown)'}`);
+        continue;
+      }
+      res.set('Cache-Control', 'no-store');
+      return res.json(candidate);
+    }
+  }
+
+  return res.status(404).json({
+    error: `No valid puzzles found between ${range.min} and ${range.max}. Try a wider rating range or import the latest Lichess CC0 puzzle database.`
+  });
 });
 
 app.get('/', (req, res) => res.sendFile(path.join(pub, 'index.html')));

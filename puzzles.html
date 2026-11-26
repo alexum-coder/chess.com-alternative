@@ -3,140 +3,420 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Chess puzzles · Zugzwang</title>
+  <meta name="theme-color" content="#242321">
+  <title>Puzzles · Zugzwang</title>
   <link rel="stylesheet" href="/theme.css">
   <link rel="stylesheet" href="/board.css">
   <style>
-    main { max-width: 1120px; margin: 24px auto; padding: 0 18px 48px; display:grid; grid-template-columns:minmax(280px,650px) minmax(250px,1fr); gap:20px; align-items:start; }
-    .panel { background:var(--panel); border:1px solid var(--line); border-radius:11px; padding:18px; box-shadow:0 2px 9px rgba(35,49,39,.045); }
-    .panel h2 { margin:0 0 12px; font-size:1.04rem; }
-    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:12px 0; }
-    button, select { padding:9px 12px; border:1px solid var(--line); border-radius:8px; background:var(--panel2); color:var(--ink); font:inherit; cursor:pointer; }
-    button.primary { background:var(--accent); border-color:var(--accent); color:#172014; font-weight:800; }
-    button:focus-visible, select:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-    .status { min-height:1.6em; color:var(--muted); }
-    .muted { color:var(--muted); font-size:.9rem; }
-    .stat { font-size:1.6rem; font-weight:800; }
-    @media(max-width:780px){ main { grid-template-columns:1fr; margin:14px auto; padding:0 12px 36px; gap:12px; } .panel { padding:14px; } }
+    main { max-width:1180px; margin:24px auto; padding:0 18px 52px; }
+    .page-head { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:18px; flex-wrap:wrap; }
+    .eyebrow { color:#a7c77c; font-size:.76rem; font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
+    h1 { margin:3px 0 0; font-size:clamp(1.65rem,3vw,2.15rem); letter-spacing:-.04em; }
+    .lead { margin:4px 0 0; color:var(--muted); }
+    .layout { display:grid; grid-template-columns:minmax(0,690px) minmax(260px,1fr); align-items:start; gap:20px; }
+    .panel { background:linear-gradient(150deg,rgba(255,255,255,.025),transparent 38%),var(--panel); border:1px solid var(--line); border-radius:12px; padding:18px; box-shadow:0 12px 32px rgba(0,0,0,.17); min-width:0; }
+    .board-panel { padding:16px; }
+    .board-top { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+    .board-top strong { font-size:1rem; }
+    .difficulty { display:inline-flex; align-items:center; padding:4px 9px; background:#3a3935; color:#d8d5cc; border:1px solid #514f49; border-radius:999px; font-size:.76rem; font-weight:800; }
+    .board-shell { width:min(100%,650px); margin:0 auto; }
+    #board { width:100%; }
+    .toolbar { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin:14px 0 0; }
+    .toolbar-left,.toolbar-right { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    button,select { border:1px solid #504e49; border-radius:8px; background:#292825; color:var(--ink); font:inherit; padding:9px 13px; cursor:pointer; }
+    button { font-weight:750; transition:background .15s,border-color .15s,transform .15s; }
+    button:hover:not(:disabled) { background:#3a3935; border-color:#77736a; transform:translateY(-1px); }
+    button.primary { background:#81b64c; color:#172014; border-color:#81b64c; }
+    button.primary:hover:not(:disabled) { background:#91c85b; }
+    button:disabled { opacity:.42; cursor:not-allowed; transform:none; }
+    select { min-width:170px; }
+    .statusbar { display:flex; align-items:center; gap:10px; min-height:54px; margin-top:14px; padding:11px 13px; border:1px solid #484640; border-radius:9px; background:#272623; }
+    .status-icon { width:28px; height:28px; flex:0 0 28px; display:grid; place-items:center; border-radius:7px; background:#3d4933; color:#b4df82; font-weight:900; }
+    .status-copy { min-width:0; }
+    .status-copy strong { display:block; font-size:.93rem; }
+    .status-copy span { display:block; color:var(--muted); font-size:.82rem; }
+    .statusbar.error .status-icon { background:#573331; color:#ffaaa3; }
+    .statusbar.success .status-icon { background:#31543a; color:#a7e0a8; }
+    .aside { display:grid; gap:14px; }
+    .panel h2 { margin:0 0 12px; font-size:1rem; letter-spacing:-.015em; }
+    .rating-card { background:linear-gradient(145deg,rgba(129,182,76,.12),transparent 68%),var(--panel); }
+    .rating-line { display:flex; align-items:flex-end; justify-content:space-between; gap:8px; }
+    .rating-number { color:#a8d878; font-size:2.5rem; font-weight:900; line-height:1; letter-spacing:-.05em; font-variant-numeric:tabular-nums; }
+    .private-tag { color:#b5d18d; border:1px solid #526b3f; border-radius:5px; padding:3px 7px; font-size:.68rem; font-weight:850; letter-spacing:.07em; text-transform:uppercase; }
+    .muted { color:var(--muted); font-size:.86rem; }
+    .rating-note { margin:10px 0 0; }
+    .login-link { display:inline-block; margin-top:10px; color:#b9df8b; font-weight:800; text-decoration:none; }
+    .login-link:hover { text-decoration:underline; }
+    .stat-row { display:flex; justify-content:space-between; gap:12px; padding:9px 0; border-top:1px solid rgba(255,255,255,.07); font-size:.88rem; }
+    .stat-row span { color:var(--muted); }
+    .stat-row strong { text-align:right; }
+    .themes { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+    .theme-chip { background:#3b3935; color:#d0c9bc; border:1px solid #514d45; border-radius:5px; padding:3px 7px; font-size:.73rem; }
+    .steps { padding-left:18px; margin:0; color:var(--muted); font-size:.87rem; }
+    .steps li+li { margin-top:7px; }
+    .attribution { font-size:.75rem; color:#858178; margin:13px 0 0; }
+    .hidden { display:none !important; }
+    .loading-pulse { animation:pulse 1.15s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity:.45; } }
+    @media(max-width:880px) { .layout { grid-template-columns:1fr; } .aside { grid-template-columns:repeat(2,minmax(0,1fr)); } .rating-card { grid-column:1/-1; } }
+    @media(max-width:560px) { main { margin:15px auto; padding:0 11px 34px; } .panel { padding:13px; } .board-panel { padding:10px; } .aside { grid-template-columns:1fr; } .toolbar { align-items:stretch; } .toolbar-left,.toolbar-right { width:100%; } .toolbar button { flex:1; } select { width:100%; } }
   </style>
 </head>
 <body>
   <main>
-    <section class="panel">
-      <h2>Daily tactics</h2>
-      <div class="row">
-        <label for="range">Rating range</label>
-        <select id="range">
-          <option value="0,1200">Beginner</option>
-          <option value="1200,1600" selected>Intermediate</option>
-          <option value="1600,2000">Advanced</option>
-          <option value="2000,3500">Expert</option>
-        </select>
-        <button id="next" class="primary">New puzzle</button>
-      </div>
-      <div id="board" class="zz-board" aria-label="Chess board"></div>
-      <p id="status" class="status" role="status" aria-live="polite">Loading a puzzle…</p>
-      <div class="row"><button id="hint">Hint</button><button id="solution">Show solution</button></div>
-    </section>
-    <aside class="panel">
-      <h2 id="title">Solve the position</h2>
-      <p class="stat" id="rating">—</p>
-      <p class="muted" id="themes"></p>
-      <p class="muted">Find the best continuation. The first move is played for you; enter the solution moves on the board. Puzzles are sourced from the Lichess CC0 database.</p>
-      <p id="feedback" class="status" aria-live="polite"></p>
-    </aside>
+    <header class="page-head">
+      <div><div class="eyebrow">Zugzwang training</div><h1>Chess puzzles</h1><p class="lead">Sharpen your tactics one position at a time.</p></div>
+      <button id="next" class="primary" type="button">New puzzle <span aria-hidden="true">↗</span></button>
+    </header>
+
+    <div class="layout">
+      <section class="panel board-panel" aria-label="Puzzle">
+        <div class="board-top">
+          <strong id="puzzleTitle">Find the best move</strong>
+          <span class="difficulty" id="difficulty">Loading</span>
+        </div>
+        <div class="board-shell"><div id="board" class="zz-board" aria-label="Chess board"></div></div>
+        <div class="statusbar" id="statusbar" role="status" aria-live="polite">
+          <span class="status-icon" id="statusIcon">…</span>
+          <div class="status-copy"><strong id="statusTitle">Finding a puzzle</strong><span id="statusText">Picking a position for you.</span></div>
+        </div>
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <button id="hint" type="button" disabled>Hint</button>
+            <button id="solution" type="button" class="hidden" disabled>Show solution</button>
+            <button id="retry" type="button" class="hidden">Retry puzzle</button>
+          </div>
+          <div class="toolbar-right">
+            <label class="hidden" for="range">Difficulty</label>
+            <select id="range" aria-label="Puzzle difficulty">
+              <option value="recommended" selected>Recommended for me</option>
+              <option value="0,1200">Beginner</option>
+              <option value="1200,1600">Intermediate</option>
+              <option value="1600,2000">Advanced</option>
+              <option value="2000,3500">Expert</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <aside class="aside">
+        <section class="panel rating-card">
+          <div class="rating-line"><h2>Your puzzle rating</h2><span class="private-tag">Private</span></div>
+          <div class="rating-number" id="rating">—</div>
+          <p class="muted rating-note" id="ratingNote">Your puzzle rating is only visible to you. Solve a puzzle on your first try to earn +5.</p>
+          <a class="login-link hidden" id="loginLink" href="/login.html?next=/puzzles.html">Log in to save your rating →</a>
+        </section>
+
+        <section class="panel">
+          <h2>Current puzzle</h2>
+          <div class="stat-row"><span>Puzzle level</span><strong id="puzzleRating">—</strong></div>
+          <div class="stat-row"><span>Your side</span><strong id="sideToMove">—</strong></div>
+          <div class="themes" id="themes"></div>
+          <p class="attribution">Puzzle positions from the Lichess Open Database (CC0).</p>
+        </section>
+
+        <section class="panel">
+          <h2>How puzzle rating works</h2>
+          <ol class="steps">
+            <li>Solve the puzzle without making a wrong move to earn <strong>+5</strong>.</li>
+            <li>A wrong move ends that attempt. You can retry and finish the puzzle, but it won't award rating.</li>
+            <li>Hints and the solution arrow are available whenever you need help. They do not remove the rating reward.</li>
+          </ol>
+        </section>
+      </aside>
+    </div>
   </main>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
   <script src="/config.js"></script>
   <script src="/nav.js"></script>
   <script type="module">
     import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.0.0/+esm';
     import { ZugzwangBoard } from '/board.js';
-    const $ = (id) => document.getElementById(id);
-    let puzzle = null, chess = null, solution = [], step = 0, selected = null, targets = [], lastMove = [];
-    const board = new ZugzwangBoard($('board'), click);
 
-    async function load() {
-      $('status').textContent = 'Finding a puzzle…';
-      $('feedback').textContent = '';
-      selected = null; targets = []; lastMove = [];
-      const [min, max] = $('range').value.split(',');
+    const $ = (id) => document.getElementById(id);
+    const ZZ = window.ZZ;
+    const RECENT_KEY = 'zz-puzzles-recent-v2';
+    const board = new ZugzwangBoard($('board'), onSquareClick);
+
+    let puzzle = null;
+    let chess = null;
+    let solution = [];
+    let step = 0;
+    let playerColor = 'w';
+    let selected = null;
+    let targets = [];
+    let lastMove = [];
+    let phase = 'loading';
+    let failedAttempt = false;
+    let hintUsed = false;
+    let hintSquare = null;
+    let solutionArrow = null;
+    let savingResult = false;
+
+    function authHeaders(json = false) {
+      const headers = {};
+      if (json) headers['Content-Type'] = 'application/json';
+      if (ZZ?.session?.access_token) headers.Authorization = 'Bearer ' + ZZ.session.access_token;
+      return headers;
+    }
+
+    function recentIds() {
       try {
-        const response = await fetch(`/api/puzzles/random?min=${min}&max=${max}`);
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Puzzle service unavailable');
-        puzzle = data;
-        chess = new Chess(data.fen);
-        solution = String(data.moves || '').trim().split(/\s+/).filter(Boolean);
-        if (!solution.length) throw new Error('This puzzle has no solution line. Try another puzzle.');
-        const first = uciMove(solution[0]);
-        const played = chess.move(first);
-        if (!played) throw new Error('Puzzle data contains an invalid opening move. Try another puzzle.');
-        lastMove = [played.from, played.to];
-        step = 1;
-        $('rating').textContent = `${data.rating} rated`;
-        $('themes').textContent = (data.themes || []).join(' · ');
-        $('title').textContent = 'Find the best move';
-        $('status').textContent = `${chess.turn() === 'w' ? 'White' : 'Black'} to play`;
-        render();
-      } catch (error) {
-        chess = null;
+        const ids = JSON.parse(sessionStorage.getItem(RECENT_KEY) || '[]');
+        return Array.isArray(ids) ? ids.filter((id) => typeof id === 'string').slice(0, 30) : [];
+      } catch { return []; }
+    }
+    function rememberPuzzle(id) {
+      try {
+        const ids = [id, ...recentIds().filter((item) => item !== id)].slice(0, 25);
+        sessionStorage.setItem(RECENT_KEY, JSON.stringify(ids));
+      } catch { /* Private browsing may disable session storage. */ }
+    }
+    function uciMove(uci) {
+      const value = String(uci || '');
+      return { from: value.slice(0, 2), to: value.slice(2, 4), ...(value[4] ? { promotion: value[4] } : {}) };
+    }
+    function validateSolution(fen, moves) {
+      const verifier = new Chess(fen);
+      if (!Array.isArray(moves) || moves.length < 2) return false;
+      for (const uci of moves) {
+        if (!/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(uci)) return false;
+        if (!verifier.move(uciMove(uci))) return false;
+      }
+      return true;
+    }
+    function setStatus(title, text, kind = '') {
+      $('statusTitle').textContent = title;
+      $('statusText').textContent = text;
+      $('statusbar').className = 'statusbar' + (kind ? ' ' + kind : '');
+      $('statusIcon').textContent = kind === 'success' ? '✓' : kind === 'error' ? '!' : phase === 'loading' ? '…' : '♟';
+    }
+    function updateControls() {
+      const playing = phase === 'playing';
+      $('hint').classList.toggle('hidden', hintUsed || !playing);
+      $('solution').classList.toggle('hidden', !hintUsed || !playing);
+      $('retry').classList.toggle('hidden', phase !== 'failed');
+      $('hint').disabled = !playing || !solution[step];
+      $('solution').disabled = !playing || !solution[step];
+      $('next').disabled = phase === 'loading';
+    }
+    function render() {
+      if (!chess) {
         board.render({ position: new Chess().board(), interactive: false });
-        $('status').textContent = error.message;
+        return;
+      }
+      board.render({
+        position: chess.board(), orientation: playerColor === 'b' ? 'black' : 'white',
+        selected, targets, lastMove, inCheck: chess.isCheck(), turn: chess.turn(),
+        hintSquare: phase === 'playing' ? hintSquare : null,
+        solutionArrow: phase === 'playing' ? solutionArrow : null,
+        interactive: phase === 'playing'
+      });
+    }
+    function setPuzzleDetails(data) {
+      $('difficulty').textContent = `${Number(data.rating).toLocaleString()} rated`;
+      $('puzzleRating').textContent = Number(data.rating).toLocaleString();
+      $('sideToMove').textContent = playerColor === 'w' ? 'White' : 'Black';
+      $('themes').replaceChildren();
+      for (const raw of (data.themes || []).slice(0, 8)) {
+        const chip = document.createElement('span');
+        chip.className = 'theme-chip';
+        chip.textContent = String(raw).replace(/[-_]/g, ' ');
+        $('themes').appendChild(chip);
+      }
+    }
+    async function loadPrivateRating() {
+      if (!ZZ?.session?.access_token) {
+        $('rating').textContent = '—';
+        $('ratingNote').textContent = 'Your puzzle rating is private. Log in to create and save yours.';
+        $('loginLink').classList.remove('hidden');
+        return;
+      }
+      $('loginLink').classList.add('hidden');
+      try {
+        const response = await fetch('/api/puzzles/stats', { headers: authHeaders() });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Could not load your puzzle rating.');
+        $('rating').textContent = Number(data.rating).toLocaleString();
+        $('ratingNote').textContent = 'Only you can see this rating. Earn +5 for each puzzle solved without a wrong move.';
+      } catch (error) {
+        $('rating').textContent = '—';
+        $('ratingNote').textContent = error.message;
+      }
+    }
+    async function loadPuzzle() {
+      phase = 'loading';
+      puzzle = null; chess = null; solution = []; step = 0; selected = null; targets = []; lastMove = [];
+      failedAttempt = false; hintUsed = false; hintSquare = null; solutionArrow = null; savingResult = false;
+      $('puzzleTitle').textContent = 'Find the best move';
+      $('difficulty').textContent = 'Loading'; $('puzzleRating').textContent = '—'; $('sideToMove').textContent = '—';
+      $('themes').replaceChildren();
+      setStatus('Finding a puzzle', 'Choosing a valid position for your level.');
+      updateControls(); render();
+
+      const range = $('range').value;
+      const params = new URLSearchParams();
+      if (range === 'recommended') params.set('recommended', '1');
+      else {
+        const [min, max] = range.split(','); params.set('min', min); params.set('max', max);
+      }
+      const recent = recentIds();
+      if (recent.length) params.set('exclude', recent.join(','));
+
+      try {
+        await ZZ?.ready;
+        const response = await fetch('/api/puzzles/random?' + params.toString(), { headers: authHeaders() });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'The puzzle service could not find a position.');
+        const moves = String(data.moves || '').trim().split(/\s+/).filter(Boolean);
+        if (!validateSolution(data.fen, moves)) throw new Error('This puzzle has an invalid move line. Please load another.');
+        puzzle = data; solution = moves; chess = new Chess(data.fen);
+        const forced = chess.move(uciMove(solution[0]));
+        if (!forced) throw new Error('The puzzle start move is invalid. Please load another.');
+        lastMove = [forced.from, forced.to];
+        step = 1; playerColor = chess.turn(); phase = 'playing';
+        rememberPuzzle(data.puzzle_id);
+        setPuzzleDetails(data);
+        setStatus('Your move', 'Find the best move. You can ask for a hint at any time.');
+        updateControls(); render();
+      } catch (error) {
+        phase = 'error'; puzzle = null; chess = null;
+        $('difficulty').textContent = 'Unavailable';
+        setStatus('Could not load a puzzle', error.message || 'Please try again.', 'error');
+        updateControls(); render();
       }
     }
 
-    function uciMove(uci) {
-      return { from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] || 'q' };
+    async function saveMiss() {
+      if (!ZZ?.session?.access_token || !puzzle?.puzzle_id) return;
+      try {
+        await fetch('/api/puzzles/miss', {
+          method: 'POST', headers: authHeaders(true),
+          body: JSON.stringify({ puzzleId: puzzle.puzzle_id }), signal: AbortSignal.timeout(6000)
+        });
+      } catch { /* cleanAttempt=false is also sent at completion as a fallback. */ }
     }
-    function render() {
-      if (!chess) return;
-      board.render({
-        position: chess.board(),
-        orientation: chess.turn() === 'w' ? 'white' : 'black',
-        selected, targets, lastMove, inCheck: chess.isCheck(), turn: chess.turn()
-      });
+    async function saveCompletion() {
+      if (savingResult) return;
+      savingResult = true;
+      if (!ZZ?.session?.access_token) {
+        setStatus('Puzzle solved!', 'Log in to save a private puzzle rating. Guests can still practise.', 'success');
+        savingResult = false;
+        return;
+      }
+      try {
+        const response = await fetch('/api/puzzles/complete', {
+          method: 'POST', headers: authHeaders(true),
+          body: JSON.stringify({ puzzleId: puzzle.puzzle_id, cleanAttempt: !failedAttempt }), signal: AbortSignal.timeout(8000)
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Your result could not be saved.');
+        if (Number.isFinite(Number(data.rating))) $('rating').textContent = Number(data.rating).toLocaleString();
+        if (data.awarded) setStatus('Puzzle solved!', `Great work. Your private puzzle rating increased by +${data.delta}.`, 'success');
+        else if (data.reason === 'attempt_had_mistake') setStatus('Puzzle solved on retry', 'You found the solution. No rating points this time because an earlier move was incorrect.', 'success');
+        else if (data.reason === 'already_completed') setStatus('Puzzle solved!', 'You have already earned the rating for this puzzle.', 'success');
+        else setStatus('Puzzle solved!', 'Your solution is complete.', 'success');
+      } catch (error) {
+        setStatus('Puzzle solved, rating not saved', error.message + ' Your solution is complete; continue to the next puzzle.', 'error');
+      } finally { savingResult = false; }
     }
-    function click(square) {
-      if (!chess || step >= solution.length) return;
+    async function failAttempt() {
+      failedAttempt = true;
+      phase = 'failed-saving'; selected = null; targets = []; hintSquare = null; solutionArrow = null;
+      setStatus('Not quite — try again', 'That move does not solve the puzzle. Saving this attempt before you retry…', 'error');
+      updateControls(); render();
+      await saveMiss();
+      phase = 'failed';
+      setStatus('Not quite — try again', 'That move does not solve the puzzle. Retry this position; this puzzle will no longer award rating.', 'error');
+      updateControls(); render();
+    }
+    function startAttemptAgain() {
+      if (!puzzle) return;
+      chess = new Chess(puzzle.fen);
+      const forced = chess.move(uciMove(solution[0]));
+      if (!forced) {
+        phase = 'error'; setStatus('Puzzle line error', 'This puzzle could not be restarted. Load another puzzle.', 'error');
+        updateControls(); render(); return;
+      }
+      step = 1; playerColor = chess.turn(); lastMove = [forced.from, forced.to];
+      selected = null; targets = []; hintSquare = null; solutionArrow = null; phase = 'playing';
+      setStatus('Your move', 'Take another look. A correct solve after a retry will not award rating.');
+      updateControls(); render();
+    }
+    function finishPuzzle() {
+      phase = 'solved'; selected = null; targets = []; hintSquare = null; solutionArrow = null;
+      $('puzzleTitle').textContent = 'Puzzle complete';
+      updateControls(); render();
+      void saveCompletion();
+    }
+    async function submitMove(from, to) {
+      const expected = solution[step];
+      const expectedMove = uciMove(expected);
+      const promotion = expectedMove.from === from && expectedMove.to === to ? (expectedMove.promotion || 'q') : 'q';
+      let played;
+      try { played = chess.move({ from, to, promotion }); } catch { played = null; }
+      if (!played) return false;
+      const uci = played.from + played.to + (played.promotion || '');
+      if (uci !== expected) {
+        chess.undo();
+        await failAttempt();
+        return true;
+      }
+
+      lastMove = [played.from, played.to]; step++;
+      selected = null; targets = []; hintSquare = null; solutionArrow = null;
+      if (step < solution.length) {
+        const reply = chess.move(uciMove(solution[step]));
+        if (!reply) {
+          phase = 'error'; setStatus('Puzzle line error', 'The opponent reply in this puzzle is invalid. Load another puzzle.', 'error');
+          updateControls(); render(); return true;
+        }
+        lastMove = [reply.from, reply.to]; step++;
+      }
+      if (step >= solution.length) finishPuzzle();
+      else {
+        setStatus('Correct!', 'Nice move. Find the next part of the combination.', 'success');
+        updateControls(); render();
+      }
+      return true;
+    }
+    function onSquareClick(square) {
+      if (phase !== 'playing' || !chess || savingResult) return;
       const piece = chess.get(square);
       if (selected && targets.includes(square)) {
-        try {
-          const move = chess.move({ from: selected, to: square, promotion: 'q' });
-          if (move) {
-            const uci = move.from + move.to + (move.promotion || '');
-            if (uci !== solution[step]) {
-              chess.undo();
-              $('feedback').textContent = 'Not quite — try another move.';
-              selected = null; targets = []; render(); return;
-            }
-            lastMove = [move.from, move.to];
-            step++; selected = null; targets = [];
-            $('feedback').textContent = 'Nice move — keep it going.';
-            if (step < solution.length) {
-              const reply = chess.move(uciMove(solution[step]));
-              if (!reply) { $('status').textContent = 'Puzzle line error. Please load another puzzle.'; render(); return; }
-              lastMove = [reply.from, reply.to];
-              step++;
-            }
-            if (step >= solution.length) {
-              $('status').textContent = 'Puzzle solved — clean tactics!';
-              $('feedback').textContent = 'Solved. ' + (puzzle.themes || []).join(', ');
-            } else $('status').textContent = 'Your move';
-            render(); return;
-          }
-        } catch { /* An illegal destination falls through to selection handling. */ }
+        void submitMove(selected, square);
+        return;
       }
       selected = piece && piece.color === chess.turn() ? square : null;
       targets = selected ? chess.moves({ square: selected, verbose: true }).map((move) => move.to) : [];
       render();
     }
-    $('next').addEventListener('click', load);
+
+    $('next').addEventListener('click', loadPuzzle);
+    $('range').addEventListener('change', loadPuzzle);
+    $('retry').addEventListener('click', startAttemptAgain);
     $('hint').addEventListener('click', () => {
-      $('feedback').textContent = solution[step] ? 'Look for a move starting from ' + solution[step].slice(0, 2) + '.' : 'No hint available.';
+      const expected = solution[step];
+      if (phase !== 'playing' || !expected) return;
+      hintUsed = true; hintSquare = expected.slice(0, 2); solutionArrow = null;
+      selected = null; targets = [];
+      setStatus('Hint', 'Look at the highlighted piece. Where can it make the strongest move?');
+      updateControls(); render();
     });
-    $('solution').addEventListener('click', () => { $('feedback').textContent = solution.slice(step).join(' '); });
-    load();
+    $('solution').addEventListener('click', () => {
+      const expected = solution[step];
+      if (phase !== 'playing' || !expected) return;
+      hintSquare = null; solutionArrow = { from: expected.slice(0, 2), to: expected.slice(2, 4) };
+      selected = null; targets = [];
+      setStatus('Solution arrow', 'The arrow shows the move to play. Make that move on the board.');
+      render();
+    });
+
+    await ZZ?.ready;
+    await loadPrivateRating();
+    await loadPuzzle();
+    window.addEventListener('zz:auth', () => { void loadPrivateRating(); });
   </script>
 </body>
 </html>

@@ -39,6 +39,7 @@ where table_schema = 'public'
   and table_name in (
     'profiles', 'games', 'friendships', 'tournaments', 'tournament_players',
     'tournament_matches', 'moderation_reports', 'moderation_actions',
-    'integrity_flags', 'puzzles'
+    'integrity_flags', 'puzzles', 'puzzle_progress'
   )
 order by table_name;
+

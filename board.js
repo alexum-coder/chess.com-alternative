@@ -22,6 +22,8 @@ export class ZugzwangBoard {
     premove = null,
     premoveTargets = false,
     moveAnnotation = null,
+    hintSquare = null,
+    solutionArrow = null,
     interactive = true
   } = {}) {
     if (!Array.isArray(position) || position.length !== 8) {
@@ -48,6 +50,7 @@ export class ZugzwangBoard {
 
         if (lastSet.has(square)) el.classList.add('last');
         if (selected === square) el.classList.add('sel');
+        if (hintSquare === square) el.classList.add('puzzle-hint-square');
         if (moveAnnotation?.from === square) el.classList.add('review-move-from');
         if (moveAnnotation?.to === square) el.classList.add('review-move-to');
         if (moveAnnotation?.from === square || moveAnnotation?.to === square) {
@@ -97,6 +100,39 @@ export class ZugzwangBoard {
       }
     }
     this.root.replaceChildren(frag);
+    if (solutionArrow?.from && solutionArrow?.to) this.#appendSolutionArrow(solutionArrow, flip);
+  }
+
+  #appendSolutionArrow({ from, to }, flip) {
+    const squareCenter = (square) => {
+      if (!/^[a-h][1-8]$/.test(square)) return null;
+      const file = FILES.indexOf(square[0]);
+      const rank = Number(square[1]);
+      const col = flip ? 7 - file : file;
+      const row = flip ? rank - 1 : 8 - rank;
+      return { x: (col + 0.5) * 100, y: (row + 0.5) * 100 };
+    };
+    const a = squareCenter(from), b = squareCenter(to);
+    if (!a || !b) return;
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 800 800');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.classList.add('zz-solution-arrow');
+    const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+    const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+    marker.setAttribute('id', 'zz-puzzle-arrow-head'); marker.setAttribute('viewBox', '0 0 10 10');
+    marker.setAttribute('refX', '8'); marker.setAttribute('refY', '5'); marker.setAttribute('markerWidth', '7');
+    marker.setAttribute('markerHeight', '7'); marker.setAttribute('orient', 'auto-start-reverse');
+    const head = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    head.setAttribute('d', 'M 0 0 L 10 5 L 0 10 z'); head.setAttribute('fill', '#ffe16b');
+    marker.appendChild(head); defs.appendChild(marker); svg.appendChild(defs);
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', String(a.x)); line.setAttribute('y1', String(a.y));
+    line.setAttribute('x2', String(b.x)); line.setAttribute('y2', String(b.y));
+    line.setAttribute('stroke', '#ffe16b'); line.setAttribute('stroke-width', '17');
+    line.setAttribute('stroke-linecap', 'round'); line.setAttribute('marker-end', 'url(#zz-puzzle-arrow-head)');
+    line.setAttribute('opacity', '.94'); svg.appendChild(line);
+    this.root.appendChild(svg);
   }
 
   #reviewBadge(annotation) {

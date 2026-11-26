@@ -146,3 +146,24 @@
   .zz-board .zz-review-badge { min-width: 17px; height: 17px; font-size: 8px; border-width: 1.5px; }
   .zz-board .zz-review-badge svg { width: 10px; height: 10px; }
 }
+
+/* Puzzle hinting stays visually consistent with the shared board skin. */
+.zz-board .sq.puzzle-hint-square {
+  outline: 4px solid #f3d35b;
+  outline-offset: -4px;
+  box-shadow: inset 0 0 0 999px rgba(243, 211, 91, .28);
+  z-index: 3;
+}
+.zz-board .zz-solution-arrow {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 3px rgba(0,0,0,.52));
+}
+@media (max-width: 520px) {
+  .zz-board .sq.puzzle-hint-square { outline-width: 3px; }
+}
