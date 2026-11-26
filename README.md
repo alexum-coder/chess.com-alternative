@@ -113,5 +113,12 @@ The computer page queues a move made while Stockfish is still downloading/initia
 ### Review scoring
 
 `review-scoring.mjs` contains the shared UCI score parser, White-perspective evaluation conversion, expected-score loss model and conservative move labels. Its regression tests live in `test/review-scoring.test.mjs`. Run `npm test` and `npm run check` before deployment.
+
+## Analysis grading correction (November 26, 2026)
+
+- Move grades use expected-score loss, with raw engine evaluation loss as a guardrail when WDL probabilities saturate in already decisive positions.
+- A non-best move that worsens the evaluation by at least 2.0 pawns is graded as a blunder, even if expected-score loss rounds to 0.0%.
+- Winning queen captures that leave a clear advantage retain the queen-capture safeguard; forced mates are not protected.
+- Excellent annotations use green; Best annotations use dark green.
 #   c h e s s . c o m - a l t e r n a t i v e  
  

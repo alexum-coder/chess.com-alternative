@@ -44,9 +44,13 @@ test('selected move annotates origin and destination squares with grade colours'
   assert.match(html, /moveAnnotation:annotation/);
   assert.match(html, /from:move\.move\.from, to:move\.move\.to/);
   assert.match(html, /REVIEW_COLORS =/);
-  for (const color of ['#8be0f2', '#3289ef', '#b7ed4d', '#35c96a', '#f0d343', '#f3973e', '#ed4d4d']) {
+  for (const color of ['#8be0f2', '#3289ef', '#4ade80', '#14532d', '#f0d343', '#f3973e', '#ed4d4d']) {
     assert.ok(html.includes(color), `expected board colour ${color}`);
   }
+  assert.match(html, /\.mark-excellent \.review-icon \{ background:#19472b; color:#4ade80; \}/);
+  assert.match(html, /\.mark-best \.review-icon \{ background:#d1fae5; color:#14532d; \}/);
+  assert.match(boardCss, /mark-excellent \{ --review-annotation-color: #4ade80; \}/);
+  assert.match(boardCss, /mark-best \{ --review-annotation-color: #14532d; background:#d1fae5; \}/);
   assert.match(html, /row\.move\.from/);
   assert.match(html, /row\.move\.to/);
   assert.match(html, /pieceNames\[row\.move\.piece\]/);

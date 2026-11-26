@@ -160,12 +160,26 @@ const LABELS = {
 };
 
 function classifyByExpectedLoss(loss) {
-  // Approximate expected-points thresholds: 0.02 / 0.05 / 0.10 / 0.20.
+  // Expected-points thresholds are useful near equality, but WDL saturates once
+  // a position is already decisively won or lost. Raw evaluation loss supplements it.
   if (loss <= 0.02) return LABELS.excellent;
   if (loss <= 0.05) return LABELS.good;
   if (loss <= 0.10) return LABELS.inaccuracy;
   if (loss <= 0.20) return LABELS.mistake;
   return LABELS.blunder;
+}
+
+const QUALITY_RANK = { excellent:0, good:1, inaccuracy:2, mistake:3, blunder:4 };
+
+function classifyByRawEvaluationLoss(rawLoss) {
+  if (!Number.isFinite(rawLoss)) return null;
+  // Pawn-loss guardrails catch WDL saturation. A 2+ pawn deterioration is a
+  // serious tactical/positional collapse even if expected score barely changes.
+  if (rawLoss >= 2.0) return LABELS.blunder;
+  if (rawLoss >= 1.0) return LABELS.mistake;
+  if (rawLoss >= 0.5) return LABELS.inaccuracy;
+  if (rawLoss >= 0.3) return LABELS.good;
+  return null;
 }
 
 export function classifyMoveQuality({ row, before, after, loss, soundSacrifice = false }) {
@@ -177,35 +191,47 @@ export function classifyMoveQuality({ row, before, after, loss, soundSacrifice =
   const moverAfter = scoreForColor(after?.whiteScore, row?.color);
   const moverAfterExpected = expectedPointsForColor(after, row?.color);
   const bestMatch = Boolean(before?.bestMove && before.bestMove === row?.uci);
+  const rawLoss = before?.score?.type === 'mate' || after?.score?.type === 'mate'
+    ? null
+    : calculateMoveLoss(before, after, row?.color);
   // After the player's move it is the opponent's turn. A positive mate score means
   // that side (the opponent) can force mate, so a queen-capture safeguard must not apply.
   const opponentHasForcedMate = after?.score?.type === 'mate' && Number(after.score.value) > 0;
 
   if (!opponentHasForcedMate && moverBefore >= 2.5 && (moverAfter <= 0.5 || (Number.isFinite(moverAfterExpected) && moverAfterExpected <= 0.5))) {
-    return { ...LABELS.missedWin, effectiveLoss:loss, queenCaptureProtected:false };
+    return { ...LABELS.missedWin, effectiveLoss:loss, queenCaptureProtected:false, rawLoss };
   }
 
   // A queen capture is not automatically good: an immediate forced mate or a
   // position that still favours the opponent remains eligible for a blunder.
   // But if best play leaves the capturer with a clear expected-score advantage,
-  // never call the queen-winning move a blunder just because centipawns swung.
+  // retain the queen-capture safeguard even when WDL/centipawn curves disagree.
   const queenCaptureProtected = row?.move?.captured === 'q'
     && !opponentHasForcedMate
     && Number.isFinite(moverAfterExpected)
     && moverAfterExpected >= 0.70;
   const effectiveLoss = queenCaptureProtected ? Math.min(loss, 0.095) : loss;
+  const expectedGrade = classifyByExpectedLoss(effectiveLoss);
+  const rawGrade = queenCaptureProtected ? null : classifyByRawEvaluationLoss(rawLoss);
 
+  // Do not let an apparently tiny WDL loss turn a 2–4 pawn deterioration into
+  // Excellent. Keep the queen-capture protection above, and trust a direct engine
+  // best-move match rather than noisy between-position score differences.
+  if (!queenCaptureProtected && !bestMatch && rawGrade && QUALITY_RANK[rawGrade.key] > QUALITY_RANK[expectedGrade.key]) {
+    return { ...rawGrade, effectiveLoss, queenCaptureProtected, rawLoss, gradingBasis:'raw-evaluation' };
+  }
   if (bestMatch && soundSacrifice && moverBefore < 2.0 && moverAfter > -0.25) {
-    return { ...LABELS.brilliant, effectiveLoss, queenCaptureProtected };
+    return { ...LABELS.brilliant, effectiveLoss, queenCaptureProtected, rawLoss };
   }
-  if (row?.legalMoveCount === 1 && effectiveLoss <= 0.10) {
-    return { ...LABELS.great, effectiveLoss, queenCaptureProtected };
+  if (row?.legalMoveCount === 1 && effectiveLoss <= 0.10 && !rawGrade) {
+    return { ...LABELS.great, effectiveLoss, queenCaptureProtected, rawLoss };
   }
-  if (bestMatch) return { ...LABELS.best, effectiveLoss, queenCaptureProtected };
-  if (moverBefore <= 0.25 && moverAfter >= 1.5 && effectiveLoss <= 0.02) {
-    return { ...LABELS.great, effectiveLoss, queenCaptureProtected };
+  if (bestMatch) return { ...LABELS.best, effectiveLoss, queenCaptureProtected, rawLoss };
+  if (moverBefore <= 0.25 && moverAfter >= 1.5 && effectiveLoss <= 0.02 && !rawGrade) {
+    return { ...LABELS.great, effectiveLoss, queenCaptureProtected, rawLoss };
   }
-  return { ...classifyByExpectedLoss(effectiveLoss), effectiveLoss, queenCaptureProtected };
+  const finalGrade = rawGrade && QUALITY_RANK[rawGrade.key] > QUALITY_RANK[expectedGrade.key] ? rawGrade : expectedGrade;
+  return { ...finalGrade, effectiveLoss, queenCaptureProtected, rawLoss, gradingBasis:finalGrade === rawGrade ? 'raw-evaluation' : 'expected-score' };
 }
 
 export function formatWhiteEvaluation(analysis) {
@@ -299,6 +325,14 @@ export function explainMoveQuality({ row, label, loss, rawPawnsLoss, bestSan, be
   const pointsText = `${formatExpectedPointsLoss(loss)} expected-score points`;
   const positionText = positionPhrase(after, row.color);
   const opponentHasForcedMate = after?.score?.type === 'mate' && Number(after.score.value) > 0;
+
+  if (label.key === 'blunder' && Number.isFinite(rawPawnsLoss) && rawPawnsLoss >= 2) {
+    const expectedText = formatExpectedPointsLoss(loss);
+    const wdlContext = Number.isFinite(loss) && loss <= 0.02
+      ? `Expected-score loss is only ${expectedText} because the opponent was already overwhelmingly better; the WDL estimate is saturated and hides the damage.`
+      : `The move also gives away ${expectedText} expected-score points.`;
+    return `${intent} This is a blunder and a serious error: the move worsens the engine evaluation by ${rawPawnsLoss.toFixed(2)} pawns. ${wdlContext} ${positionText}${alternative}${continuation}${reply}`;
+  }
 
   if (row.move?.captured === 'q') {
     if (opponentHasForcedMate) {

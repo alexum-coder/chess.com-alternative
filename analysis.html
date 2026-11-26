@@ -88,8 +88,8 @@
     .mark-book .review-icon { background:#34424a; color:#b7d6e8; }
     .mark-brilliant .review-icon { background:#21424a; color:#8be0f2; box-shadow:0 0 0 2px rgba(104,213,230,.10); }
     .mark-great .review-icon { background:#203f68; color:#3289ef; }
-    .mark-excellent .review-icon { background:#3c4b22; color:#b7ed4d; }
-    .mark-best .review-icon { background:#214a32; color:#35c96a; }
+    .mark-excellent .review-icon { background:#19472b; color:#4ade80; }
+    .mark-best .review-icon { background:#d1fae5; color:#14532d; }
     .mark-good .review-icon { background:#3e463b; color:#c8d2c0; }
     .mark-inaccuracy .review-icon { background:#514923; color:#f0d343; }
     .mark-mistake .review-icon { background:#593b22; color:#f3973e; }
@@ -97,15 +97,15 @@
     .mark-checkmate .review-icon { background:#413750; color:#c5a2ff; }
     .mini-mark.mark-brilliant { color:#8be0f2; }
     .mini-mark.mark-great { color:#3289ef; }
-    .mini-mark.mark-excellent { color:#b7ed4d; }
-    .mini-mark.mark-best { color:#35c96a; }
+    .mini-mark.mark-excellent { color:#4ade80; }
+    .mini-mark.mark-best { color:#14532d; background:#d1fae5; border-radius:50%; }
     .mini-mark.mark-inaccuracy { color:#f0d343; }
     .mini-mark.mark-mistake { color:#f3973e; }
     .mini-mark.mark-blunder,.mini-mark.mark-missed-win { color:#ed4d4d; }
     .mini-mark.mark-checkmate { color:#c5a2ff; }
     .move-cell.mark-great { color:#55a0f7; }
-    .move-cell.mark-excellent { color:#c5ed70; }
-    .move-cell.mark-best { color:#54d17e; }
+    .move-cell.mark-excellent { color:#4ade80; }
+    .move-cell.mark-best { color:#14532d; background:#d1fae5; }
     .move-cell.mark-inaccuracy { color:#f0d343; }
     .move-cell.mark-mistake { color:#f3973e; }
     .move-cell.mark-blunder,.move-cell.mark-missed-win { color:#ed4d4d; }
@@ -118,6 +118,7 @@
     .move-number { color:#929089; font-size:.74rem; text-align:right; padding-right:3px; }
     .move-cell { display:flex; align-items:center; gap:5px; min-width:0; padding:6px 7px; border:1px solid transparent; border-radius:5px; background:transparent; font-size:.8rem; font-weight:800; text-align:left; }
     .move-cell.selected { background:#4b4a45; border-color:#8a877f; box-shadow:inset 3px 0 #81b64c; }
+    .move-cell.mark-best.selected { background:#d1fae5; border-color:#14532d; color:#14532d; box-shadow:inset 3px 0 #14532d; }
     .move-cell .notation { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .move-cell .mini-mark { flex:0 0 15px; font-size:.7rem; text-align:center; }
     .move-cell.mark-inaccuracy,.move-cell.mark-mistake { color:#ffc16e; }
@@ -212,7 +213,7 @@
 
     const ANALYSIS_DEPTH = 14;
     const REVIEW_COLORS = {
-      brilliant:'#8be0f2', great:'#3289ef', excellent:'#b7ed4d', best:'#35c96a',
+      brilliant:'#8be0f2', great:'#3289ef', excellent:'#4ade80', best:'#14532d',
       inaccuracy:'#f0d343', mistake:'#f3973e', blunder:'#ed4d4d', 'missed-win':'#ed4d4d',
       checkmate:'#c5a2ff', book:'#9bc7df', good:'#c8d2c0'
     };
