@@ -230,76 +230,113 @@ export function pieceName(piece) {
 function positionPhrase(after, color) {
   const value = scoreForColor(after?.whiteScore, color);
   if (!Number.isFinite(value)) return 'The resulting position could not be evaluated reliably.';
-  if (value >= 3) return 'You are still winning by a wide margin.';
+  if (value >= 3) return 'The resulting position is winning for you.';
   if (value >= 1.25) return 'You keep a clear advantage.';
-  if (value >= 0.35) return 'You keep a small advantage.';
+  if (value >= 0.35) return 'You retain a small advantage.';
   if (value <= -3) return 'The opponent has a decisive advantage.';
   if (value <= -1.25) return 'The opponent is now clearly better.';
   if (value <= -0.35) return 'The opponent has a small edge.';
-  return 'The position is approximately balanced.';
+  return 'The position remains approximately balanced.';
+}
+
+function describeMoveIntent(row) {
+  const move = row?.move;
+  if (!move) return 'This move changes the position.';
+  const piece = String(move.piece || 'p').toLowerCase();
+  const from = move.from || '—', to = move.to || '—';
+  const file = to[0], rank = to[1];
+  const pieceLabel = pieceName(piece);
+  const facts = [];
+  const san = String(row.san || '');
+  const castle = san.startsWith('O-O-O') ? 'queenside' : san.startsWith('O-O') ? 'kingside' : '';
+
+  if (castle) {
+    facts.push(`Castles ${castle}, moving the king toward safety and connecting the rooks.`);
+  } else if (move.captured) {
+    facts.push(`Captures the opponent’s ${pieceName(move.captured)} on ${to}.`);
+  } else if (piece === 'p' && ['d4','e4','d5','e5'].includes(to)) {
+    facts.push(`Advances the pawn to ${to}, claiming space in the centre and contesting key central squares.`);
+  } else if (piece === 'p') {
+    const flank = 'abc'.includes(file) ? 'queenside' : 'fgh'.includes(file) ? 'kingside' : 'central';
+    facts.push(`Advances the ${flank} pawn to ${to}, changing the pawn structure and the space available on that side.`);
+  } else if ((piece === 'n' || piece === 'b') && ((row.color === 'w' && from[1] === '1') || (row.color === 'b' && from[1] === '8'))) {
+    facts.push(`Develops the ${pieceLabel} from ${from} to ${to}, bringing a minor piece into play.`);
+  } else if (piece === 'n' && 'cdef'.includes(file) && '3456'.includes(rank)) {
+    facts.push(`Centralises the knight on ${to}, where it can influence more squares.`);
+  } else if (piece === 'b') {
+    facts.push(`Repositions the bishop from ${from} to ${to}, changing its diagonal and influence.`);
+  } else if (piece === 'r') {
+    facts.push(`Activates the rook from ${from} to ${to}, bringing it onto a new file or rank.`);
+  } else if (piece === 'q') {
+    facts.push(`Repositions the queen from ${from} to ${to}, changing its lines of attack and defence.`);
+  } else if (piece === 'k') {
+    facts.push(`Moves the king from ${from} to ${to}.`);
+  } else {
+    facts.push(`Moves the ${pieceLabel} from ${from} to ${to}.`);
+  }
+
+  if (String(move.flags || '').includes('e')) facts.push('This is an en passant capture.');
+  if (san.includes('#')) facts.push('It delivers checkmate.');
+  else if (san.includes('+')) facts.push('It gives check.');
+  if (move.promotion) facts.push(`The pawn promotes to a ${pieceName(move.promotion)}.`);
+  if (row.wasInCheck && !String(row.san || '').includes('+') && !String(row.san || '').includes('#')) facts.push('The move also gets your king out of check.');
+  return facts.join(' ');
 }
 
 export function explainMoveQuality({ row, label, loss, rawPawnsLoss, bestSan, bestLineSan, replySan, after, replyCapturesMovedPiece = false, replyTacticalText = '' }) {
-  if (label.key === 'checkmate') return `${row.san} is checkmate. The game ends here.`;
+  if (label.key === 'checkmate') return `${row.san} is checkmate. The game ends immediately.`;
   if (label.key === 'book') {
     const openings = Array.isArray(row.bookOpenings) ? row.bookOpenings : [];
     return openings.length
-      ? `This follows the ${openings.slice(0, 3).join(', ')}${openings.length > 3 ? ` and ${openings.length - 3} other recognised line${openings.length - 3 === 1 ? '' : 's'}` : ''}. Book moves are established opening theory, not a tactical brilliance grade.`
-      : 'This move follows a recognised opening-theory sequence. It is a theory move, not a tactical brilliance grade.';
+      ? `This move follows recognised ${openings.slice(0, 3).join(', ')} theory. The move is part of an established opening plan; it is not being graded as a tactical achievement.`
+      : 'This move follows a recognised opening-theory sequence.';
   }
 
-  const capturedPiece = row.move?.captured;
-  const captured = capturedPiece ? `You capture the opponent’s ${pieceName(capturedPiece)}. ` : '';
+  const intent = describeMoveIntent(row);
   const alternative = bestSan && bestSan !== row.san ? ` Stockfish preferred ${bestSan}.` : '';
-  const continuation = bestLineSan && bestSan && bestSan !== row.san ? ` The engine's main line starts ${bestLineSan}.` : '';
-  const reply = replySan ? ` The opponent's strongest reply is ${replySan}. ${replyTacticalText}` : '';
+  const continuation = bestLineSan && bestSan && bestSan !== row.san ? ` Its best continuation is ${bestLineSan}.` : '';
+  const reply = replySan ? ` The strongest reply is ${replySan}. ${replyTacticalText}` : '';
   const pointsText = `${formatExpectedPointsLoss(loss)} expected-score points`;
   const positionText = positionPhrase(after, row.color);
   const opponentHasForcedMate = after?.score?.type === 'mate' && Number(after.score.value) > 0;
-  const moveFacts = [];
-  if (row.san.includes('+')) moveFacts.push('It gives check.');
-  if (row.san.startsWith('O-O')) moveFacts.push('You castle and bring your king to safety.');
-  if (row.move?.promotion) moveFacts.push(`You promote to a ${pieceName(row.move.promotion)}.`);
-  const facts = moveFacts.length ? ` ${moveFacts.join(' ')}` : '';
 
-  if (capturedPiece === 'q') {
+  if (row.move?.captured === 'q') {
     if (opponentHasForcedMate) {
-      return `${captured}However, the opponent has a forced mating sequence${reply}. Winning the queen does not stop the mate.${alternative}${continuation}`;
+      return `${intent} Despite winning the queen, the resulting position allows a forced mating sequence.${reply}${alternative}${continuation}`;
     }
     if (replyCapturesMovedPiece) {
-      return `${captured}${replySan} can immediately take the piece that captured it. The engine has evaluated the full exchange, not just the queen capture.${positionText}${alternative}${continuation}`;
+      return `${intent} The engine’s reply ${replySan} can immediately recapture the piece that took the queen. The full exchange, not just the queen capture, determines the grade.${positionText}${alternative}${continuation}`;
     }
     if (label.queenCaptureProtected) {
-      const rawSwing = Number.isFinite(rawPawnsLoss) ? ` The raw evaluation swing is ${rawPawnsLoss.toFixed(2)} pawns.` : '';
-      return `${captured}${positionText} Best-play analysis still gives you at least a 70% expected score, and no forced mate was found against you. The queen capture is therefore not classified as a blunder.${alternative}${continuation}${reply}`;
+      return `${intent} Best-play analysis still gives you at least a 70% expected score, with no forced mate found against you. The queen win is therefore not treated as a blunder.${positionText}${alternative}${continuation}${reply}`;
     }
-    return `${captured}${positionText}${label.key === 'blunder' ? ' The engine finds a concrete tactical refutation.' : ` The move costs about ${pointsText} of expected score.`}${reply}${alternative}${continuation}`;
+    return `${intent} ${positionText}${label.key === 'blunder' ? ' The engine finds a concrete tactical refutation.' : ` The move costs about ${pointsText}.`}${reply}${alternative}${continuation}`;
   }
 
   if (label.key === 'brilliant') {
-    return `A rare, engine-approved piece sacrifice. The offered piece can be captured, but the engine's strongest continuation declines it because the compensation is sufficient.${facts}${reply}${continuation}`;
+    return `${intent} This is a rare, engine-approved sacrifice: the opponent can take the offered piece, but the strongest continuation declines it because the compensation is sufficient.${reply}${continuation}`;
   }
   if (label.key === 'best') {
-    return `${captured}This matches Stockfish's top move at the selected depth. ${positionText}${facts}${reply}${continuation}`;
+    return `${intent} This is Stockfish’s top move at the selected depth. ${positionText}${reply}`;
   }
   if (label.key === 'great') {
-    return `${captured}A critical find: this is the only legal move, or it changes the evaluation from worse to clearly favourable. ${positionText}${facts}${reply}${continuation}`;
+    return `${intent} A critical find: it is the only legal move or turns an inferior position into a clearly favourable one. ${positionText}${reply}${continuation}`;
   }
   if (label.key === 'excellent') {
-    return `${captured}A very accurate move. It gives up only ${pointsText} compared with the engine's best continuation. ${positionText}${alternative}${continuation}${reply}${facts}`;
+    return `${intent} A very accurate choice, giving up only ${pointsText} compared with the engine’s best continuation. ${positionText}${alternative}${continuation}${reply}`;
   }
   if (label.key === 'good') {
-    return `${captured}A sound move that keeps the game in good shape. The engine's preferred continuation was slightly more precise. ${positionText}${alternative}${continuation}${reply}${facts}`;
+    return `${intent} A sound move that preserves most of the position’s value. A more precise option was available.${positionText}${alternative}${continuation}${reply}`;
   }
   if (label.key === 'inaccuracy') {
-    return `${captured}This gives away about ${pointsText} and makes the opponent's job easier. ${positionText}${alternative}${continuation}${reply}${facts}`;
+    return `${intent} This gives away about ${pointsText} and makes the opponent’s task easier. ${positionText}${alternative}${continuation}${reply}`;
   }
   if (label.key === 'mistake') {
-    return `${captured}A significant error, losing about ${pointsText} of expected score. ${positionText}${alternative}${continuation}${reply}${facts}`;
+    return `${intent} This is a meaningful error, losing about ${pointsText} of expected score. ${positionText}${alternative}${continuation}${reply}`;
   }
   if (label.key === 'missed-win') {
-    return `You had a winning position but missed the continuation. The opponent can now escape with a much better result.${alternative}${continuation}${reply}${facts}`;
+    return `${intent} The position contained a winning continuation, but this move lets the opponent escape with a much better result.${alternative}${continuation}${reply}`;
   }
-  const rawNote = Number.isFinite(rawPawnsLoss) && rawPawnsLoss >= 1 ? ` The raw engine evaluation changed by about ${rawPawnsLoss.toFixed(1)} pawns.` : '';
-  return `${captured}A serious error, losing about ${pointsText} of expected score. ${positionText}${rawNote}${alternative}${continuation}${reply}${facts}`;
+  const rawNote = Number.isFinite(rawPawnsLoss) && rawPawnsLoss >= 1 ? ` The raw evaluation also shifted by ${rawPawnsLoss.toFixed(1)} pawns.` : '';
+  return `${intent} This is a serious error, losing about ${pointsText} of expected score. ${positionText}${rawNote}${alternative}${continuation}${reply}${tacticalDetail}`;
 }

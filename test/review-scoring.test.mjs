@@ -65,7 +65,7 @@ test('a large raw swing in an already-won position is not a blunder', () => {
   assert.notEqual(label.key, 'blunder');
   assert.equal(label.queenCaptureProtected, true);
   assert.equal(label.key, 'excellent');
-  assert.match(explainMoveQuality({ row, label, loss, after }), /capture the opponent’s queen/i);
+  assert.match(explainMoveQuality({ row, label, loss, after }), /opponent’s queen/i);
 });
 
 test('queen capture cannot be labelled a blunder while the resulting position is still clearly favourable', () => {
@@ -169,4 +169,35 @@ test('validates the previously supplied game line and identifies Qxc7 correctly'
   }
   assert.equal(qxc7?.captured, 'p', 'Qxc7 captures the c7 pawn, not the queen');
   assert.equal(game.isCheckmate(), true, 'Qxa1# is checkmate');
+});
+
+
+test('move explanations describe central pawn moves and piece development', () => {
+  const centre = explainMoveQuality({
+    row:{ san:'e4', color:'w', move:{ piece:'p', from:'e2', to:'e4' } },
+    label:{ key:'best' }, after:{ whiteScore:0.2 }
+  });
+  assert.match(centre, /claiming space in the centre/i);
+
+  const development = explainMoveQuality({
+    row:{ san:'Nf3', color:'w', move:{ piece:'n', from:'g1', to:'f3' } },
+    label:{ key:'best' }, after:{ whiteScore:0.2 }
+  });
+  assert.match(development, /develops the knight/i);
+});
+
+test('move explanations name captures, checks, and castling accurately', () => {
+  const capture = explainMoveQuality({
+    row:{ san:'Rxe8+', color:'w', move:{ piece:'r', from:'e1', to:'e8', captured:'q' } },
+    label:{ key:'excellent' }, loss:0.01, after:{ whiteScore:3.2 }
+  });
+  assert.match(capture, /captures the opponent’s queen on e8/i);
+  assert.match(capture, /gives check/i);
+
+  const castle = explainMoveQuality({
+    row:{ san:'O-O', color:'w', move:{ piece:'k', from:'e1', to:'g1', flags:'k' } },
+    label:{ key:'best' }, after:{ whiteScore:0.3 }
+  });
+  assert.match(castle, /castle kingside/i);
+  assert.doesNotMatch(castle, /moves the king from e1 to g1/i);
 });
