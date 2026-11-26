@@ -97,3 +97,51 @@
   .zz-board .sq i { font-size: .55rem; }
   .zz-board .sq.target.cap::after { border-width: 3px; }
 }
+
+/* Selected review move: colour both the origin and landing square, and badge the piece. */
+.zz-board .sq.review-move-from::before,
+.zz-board .sq.review-move-to::before {
+  position: absolute;
+  inset: 0;
+  content: '';
+  z-index: 0;
+  background: var(--review-annotation-color, #81b64c);
+  pointer-events: none;
+}
+.zz-board .sq.review-move-from::before { opacity: .34; }
+.zz-board .sq.review-move-to::before { opacity: .50; }
+.zz-board .sq.review-move-from { box-shadow: inset 0 0 0 3px var(--review-annotation-color, #81b64c); }
+.zz-board .sq.review-move-to { box-shadow: inset 0 0 0 4px var(--review-annotation-color, #81b64c); }
+.zz-board .zz-review-badge {
+  position: absolute;
+  z-index: 6;
+  top: 3%;
+  right: 3%;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 3px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 2px solid var(--review-annotation-color, #81b64c);
+  background: rgba(25, 25, 24, .94);
+  color: var(--review-annotation-color, #81b64c);
+  box-shadow: 0 1px 4px rgba(0,0,0,.52);
+  font: 900 10px/1 system-ui, sans-serif;
+  letter-spacing: -.06em;
+  pointer-events: none;
+}
+.zz-board .zz-review-badge svg { display: block; width: 12px; height: 12px; }
+.zz-board .zz-review-badge.mark-brilliant { --review-annotation-color: #8be0f2; }
+.zz-board .zz-review-badge.mark-great { --review-annotation-color: #3289ef; }
+.zz-board .zz-review-badge.mark-excellent { --review-annotation-color: #b7ed4d; }
+.zz-board .zz-review-badge.mark-best { --review-annotation-color: #35c96a; }
+.zz-board .zz-review-badge.mark-inaccuracy { --review-annotation-color: #f0d343; }
+.zz-board .zz-review-badge.mark-mistake { --review-annotation-color: #f3973e; }
+.zz-board .zz-review-badge.mark-blunder,
+.zz-board .zz-review-badge.mark-missed-win { --review-annotation-color: #ed4d4d; }
+.zz-board .zz-review-badge.mark-checkmate { --review-annotation-color: #c5a2ff; }
+@media (max-width: 520px) {
+  .zz-board .zz-review-badge { min-width: 17px; height: 17px; font-size: 8px; border-width: 1.5px; }
+  .zz-board .zz-review-badge svg { width: 10px; height: 10px; }
+}

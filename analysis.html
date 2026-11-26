@@ -75,22 +75,41 @@
     .book-tag { padding:3px 6px; border-radius:4px; background:#3b4836; color:#c9e6b4; font-size:.68rem; font-weight:800; }
     .review-icon { display:inline-grid; place-items:center; width:27px; height:27px; flex:0 0 27px; border-radius:50%; background:#41403b; color:#d7d4cc; }
     .review-icon.review-glyph { font-size:15px; font-weight:900; line-height:1; letter-spacing:-.04em; text-align:center; white-space:nowrap; }
+    .review-icon svg { width:16px; height:16px; display:block; }
     .mini-mark.review-glyph { font-size:11px; font-weight:900; line-height:1; letter-spacing:-.06em; text-align:center; white-space:nowrap; }
-    .mini-mark.review-glyph[aria-label=excellent] { font-size:12px; }
     .mini-mark { display:inline-grid; place-items:center; flex:0 0 17px; width:17px; height:17px; }
-    .mini-mark svg { width:14px; height:14px; display:block; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+    .mini-mark svg { width:14px; height:14px; display:block; }
+    .move-piece-line { display:flex; align-items:center; gap:8px; margin:2px 0 7px; padding:6px 8px; width:max-content; max-width:100%; border:1px solid #4c4a45; border-radius:6px; background:#292825; color:#d9d6cf; font-size:.77rem; font-weight:800; }
+    .move-piece-line .piece-symbol { font-size:1.35rem; line-height:1; }
+    .move-piece-line .move-route { color:#f2f0e9; font-variant-numeric:tabular-nums; }
     .mini-mark.pending { width:11px; height:11px; margin:0 3px; border-radius:50%; background:#494741; position:relative; overflow:hidden; }
     .mini-mark.pending::after { content:""; position:absolute; inset:0; transform:translateX(-100%); background:linear-gradient(90deg,transparent,rgba(255,255,255,.14),transparent); animation:skeleton-shimmer 1.35s ease-in-out infinite; }
     @media(prefers-reduced-motion:reduce) { .skeleton-icon::after,.skeleton-line::after,.mini-mark.pending::after { animation:none; transform:none; opacity:.35; } }
     .mark-book .review-icon { background:#34424a; color:#b7d6e8; }
-    .mark-brilliant .review-icon { background:#21424a; color:#8be0ec; box-shadow:0 0 0 2px rgba(104,213,230,.10); }
-    .mark-best .review-icon,.mark-great .review-icon { background:#304a31; color:#b7e0aa; }
-    .mark-excellent .review-icon { background:#344632; color:#b8dba9; }
+    .mark-brilliant .review-icon { background:#21424a; color:#8be0f2; box-shadow:0 0 0 2px rgba(104,213,230,.10); }
+    .mark-great .review-icon { background:#203f68; color:#3289ef; }
+    .mark-excellent .review-icon { background:#3c4b22; color:#b7ed4d; }
+    .mark-best .review-icon { background:#214a32; color:#35c96a; }
     .mark-good .review-icon { background:#3e463b; color:#c8d2c0; }
-    .mark-inaccuracy .review-icon { background:#57472b; color:#ffd28b; }
-    .mark-mistake .review-icon { background:#593b2c; color:#ffbd91; }
-    .mark-blunder .review-icon,.mark-missed-win .review-icon { background:#572f30; color:#ffaaa5; }
-    .mark-checkmate .review-icon { background:#413750; color:#d0b9ff; }
+    .mark-inaccuracy .review-icon { background:#514923; color:#f0d343; }
+    .mark-mistake .review-icon { background:#593b22; color:#f3973e; }
+    .mark-blunder .review-icon,.mark-missed-win .review-icon { background:#572f30; color:#ed4d4d; }
+    .mark-checkmate .review-icon { background:#413750; color:#c5a2ff; }
+    .mini-mark.mark-brilliant { color:#8be0f2; }
+    .mini-mark.mark-great { color:#3289ef; }
+    .mini-mark.mark-excellent { color:#b7ed4d; }
+    .mini-mark.mark-best { color:#35c96a; }
+    .mini-mark.mark-inaccuracy { color:#f0d343; }
+    .mini-mark.mark-mistake { color:#f3973e; }
+    .mini-mark.mark-blunder,.mini-mark.mark-missed-win { color:#ed4d4d; }
+    .mini-mark.mark-checkmate { color:#c5a2ff; }
+    .move-cell.mark-great { color:#55a0f7; }
+    .move-cell.mark-excellent { color:#c5ed70; }
+    .move-cell.mark-best { color:#54d17e; }
+    .move-cell.mark-inaccuracy { color:#f0d343; }
+    .move-cell.mark-mistake { color:#f3973e; }
+    .move-cell.mark-blunder,.move-cell.mark-missed-win { color:#ed4d4d; }
+    .move-cell.mark-brilliant { color:#8be0f2; }
     .moves-area { padding:0 14px 12px; }
     .moves-title { display:flex; justify-content:space-between; align-items:center; gap:8px; margin:0 0 8px; }
     .moves-title h3 { margin:0; font-size:.89rem; }
@@ -192,6 +211,11 @@
     const board = new ZugzwangBoard($('board'));
 
     const ANALYSIS_DEPTH = 14;
+    const REVIEW_COLORS = {
+      brilliant:'#8be0f2', great:'#3289ef', excellent:'#b7ed4d', best:'#35c96a',
+      inaccuracy:'#f0d343', mistake:'#f3973e', blunder:'#ed4d4d', 'missed-win':'#ed4d4d',
+      checkmate:'#c5a2ff', book:'#9bc7df', good:'#c8d2c0'
+    };
     function updateControls() {
       $('firstMove').disabled = !positions.length || selectedPly === 0;
       $('prevMove').disabled = !positions.length || selectedPly === 0;
@@ -328,18 +352,41 @@
       else if (replyMove?.san?.includes('+')) replyTacticalText = `The opponent's best reply ${replySan} comes with check.`;
       return explainMoveQuality({ row, label, loss:expectedLoss, rawPawnsLoss, bestSan, bestLineSan, replySan, after, replyCapturesMovedPiece, replyTacticalText });
     }
-    // Use the familiar chess-review glyphs as plain text, not SVG artwork or emoji
-    // assets. Text glyphs render consistently in move lists, summaries and detail cards.
+    // Keep classic text marks for most grades; Best, Excellent and Checkmate use inline vectors.
     const SUMMARY_MARKS = {
-      book:'▤', brilliant:'!!', best:'*', great:'!', excellent:'👍', good:'✓',
-      inaccuracy:'?', mistake:'?!', blunder:'??', 'missed-win':'?!', checkmate:'#'
+      book:'▤', brilliant:'!!', great:'!', good:'✓',
+      inaccuracy:'?', mistake:'?!', blunder:'??', 'missed-win':'?!'
     };
     function iconFor(key) { return SUMMARY_MARKS[key] || ''; }
+    function makeReviewVector(key) {
+      const ns = 'http://www.w3.org/2000/svg';
+      const svg = document.createElementNS(ns, 'svg');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      svg.setAttribute('aria-hidden', 'true');
+      svg.setAttribute('focusable', 'false');
+      if (key === 'best') {
+        const path = document.createElementNS(ns, 'path');
+        path.setAttribute('d', 'M2 10h4v11H2zM22 11.1c0-1.1-.9-2-2-2h-6.1l.9-4.3.03-.35c0-.42-.17-.8-.45-1.08L13.3 2 6.8 8.5c-.36.36-.58.86-.58 1.4V19c0 1.1.9 2 2 2h8.8c.83 0 1.55-.51 1.86-1.25l3-7.05c.09-.22.14-.46.14-.7v-.9z');
+        path.setAttribute('fill', 'currentColor'); svg.append(path);
+      } else if (key === 'excellent') {
+        const path = document.createElementNS(ns, 'path');
+        path.setAttribute('d', 'M12 2.4l2.93 5.94 6.56.95-4.75 4.63 1.12 6.53L12 17.37l-5.86 3.08 1.12-6.53L2.5 9.29l6.57-.95L12 2.4z');
+        path.setAttribute('fill', 'currentColor'); path.setAttribute('stroke', 'currentColor'); path.setAttribute('stroke-linejoin', 'round'); svg.append(path);
+      } else if (key === 'checkmate') {
+        const path = document.createElementNS(ns, 'path');
+        path.setAttribute('d', 'M8 3L6 21M18 3l-2 18M3 9h18M2 15h18');
+        path.setAttribute('fill', 'none'); path.setAttribute('stroke', 'currentColor'); path.setAttribute('stroke-width', '2.8'); path.setAttribute('stroke-linecap', 'round'); svg.append(path);
+      } else return null;
+      return svg;
+    }
     function renderReviewIcon(node, key) {
       node.replaceChildren();
-      node.classList.add('review-glyph');
-      node.textContent = iconFor(key) || '·';
+      node.classList.add('review-glyph', `mark-${key || 'good'}`);
+      const vector = makeReviewVector(key);
+      if (vector) node.append(vector);
+      else node.textContent = iconFor(key) || '·';
       node.setAttribute('aria-label', key || 'move');
+      node.setAttribute('title', ({best:'Best move', excellent:'Excellent move', checkmate:'Checkmate'})[key] || key || 'Move annotation');
     }
     function showAnalysisSkeleton() {
       const detail = $('moveDetail'); detail.setAttribute('aria-busy','true');
@@ -410,7 +457,11 @@
       selectedPly = Math.max(0, Math.min(rows.length, Number(ply) || 0));
       const position = new Chess(positions[selectedPly] || STANDARD_FEN);
       const move = selectedPly ? rows[selectedPly - 1] : null;
-      board.render({ position:position.board(), orientation:flipped ? 'black' : 'white', lastMove:move ? [move.move.from, move.move.to] : [], inCheck:position.isCheck(), turn:position.turn(), interactive:false });
+      const annotation = move?.label ? {
+        from:move.move.from, to:move.move.to, key:move.label.key,
+        mark:iconFor(move.label.key), label:move.label.name, color:REVIEW_COLORS[move.label.key] || REVIEW_COLORS.good
+      } : null;
+      board.render({ position:position.board(), orientation:flipped ? 'black' : 'white', lastMove:move ? [move.move.from, move.move.to] : [], moveAnnotation:annotation, inCheck:position.isCheck(), turn:position.turn(), interactive:false });
       $('positionLabel').textContent = move ? `After ${move.moveNumber}${move.color === 'w' ? '.' : '…'} ${move.san}` : 'Starting position';
       $('turnLabel').textContent = position.isGameOver() ? (position.isCheckmate() ? 'Checkmate' : 'Game over') : `${position.turn() === 'w' ? 'White' : 'Black'} to move${position.isCheck() ? ' · Check' : ''}`;
       if (evaluations.length) {
@@ -507,7 +558,19 @@
       head.classList.add('mark-' + (row.label?.key || 'good'));
       title.textContent = `${row.moveNumber}${row.color === 'w' ? '.' : '…'} ${row.san} · ${row.label?.name || 'Not analysed'}`;
       text.textContent = row.explanation || 'The engine did not return a move explanation.';
-      head.append(icon, title); detail.append(head, text);
+      head.append(icon, title);
+      const pieceNames = { p:'pawn', n:'knight', b:'bishop', r:'rook', q:'queen', k:'king' };
+      const pieceGlyphs = { w:{p:'♙',n:'♘',b:'♗',r:'♖',q:'♕',k:'♔'}, b:{p:'♟',n:'♞',b:'♝',r:'♜',q:'♛',k:'♚'} };
+      const route = document.createElement('div'); route.className = 'move-piece-line';
+      const pieceSymbol = document.createElement('span'); pieceSymbol.className = 'piece-symbol';
+      pieceSymbol.textContent = pieceGlyphs[row.color]?.[row.move.piece] || '♟';
+      const pieceText = document.createElement('span');
+      const sideName = row.color === 'w' ? 'White' : 'Black';
+      pieceText.textContent = `${sideName} ${pieceNames[row.move.piece] || 'piece'}`;
+      const routeText = document.createElement('strong'); routeText.className = 'move-route';
+      routeText.textContent = `${row.move.from} → ${row.move.to}`;
+      route.append(pieceSymbol, pieceText, routeText);
+      detail.append(head, route, text);
       if (row.bestSan && row.bestSan !== row.san) {
         const alternative = document.createElement('p'); alternative.className = 'muted'; alternative.textContent = `Better move: ${row.bestSan}`; detail.append(alternative);
       }
@@ -546,8 +609,10 @@
       for (const key of order) {
         const count = counts.get(key) || 0; if (!count) continue;
         const pill = document.createElement('span'); pill.className = 'summary-pill';
+        const mark = document.createElement('span'); mark.className = 'mini-mark'; renderReviewIcon(mark,key);
+        const label = document.createElement('span');
         const names = { book:'Book',brilliant:'Brilliant',best:'Best',great:'Great',excellent:'Excellent',good:'Good',inaccuracy:'Inaccuracy',mistake:'Mistake',blunder:'Blunder','missed-win':'Missed win',checkmate:'Checkmate' };
-        pill.textContent = `${iconFor(key)} ${names[key]} ${count}`; summary.append(pill);
+        label.textContent = ` ${names[key]} ${count}`; pill.append(mark,label); summary.append(pill);
       }
       summary.hidden = !summary.childElementCount;
     }

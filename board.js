@@ -21,6 +21,7 @@ export class ZugzwangBoard {
     turn = 'w',
     premove = null,
     premoveTargets = false,
+    moveAnnotation = null,
     interactive = true
   } = {}) {
     if (!Array.isArray(position) || position.length !== 8) {
@@ -47,6 +48,12 @@ export class ZugzwangBoard {
 
         if (lastSet.has(square)) el.classList.add('last');
         if (selected === square) el.classList.add('sel');
+        if (moveAnnotation?.from === square) el.classList.add('review-move-from');
+        if (moveAnnotation?.to === square) el.classList.add('review-move-to');
+        if (moveAnnotation?.from === square || moveAnnotation?.to === square) {
+          el.style.setProperty('--review-annotation-color', moveAnnotation.color || '#81b64c');
+          el.setAttribute('aria-label', `${el.getAttribute('aria-label')} · ${moveAnnotation.label || moveAnnotation.key || 'review'} ${moveAnnotation.from === square ? 'move origin' : 'move destination'}`);
+        }
         if (targetSet.has(square)) {
           el.classList.add('target');
           if (piece) el.classList.add('cap');
@@ -56,6 +63,7 @@ export class ZugzwangBoard {
         if (premove?.to === square) el.classList.add('pre-to');
         if (inCheck && piece?.type === 'k' && piece.color === turn) el.classList.add('chk');
         if (piece) el.appendChild(this.#piece(piece.color, piece.type));
+        if (moveAnnotation?.to === square) el.appendChild(this.#reviewBadge(moveAnnotation));
 
         if (premove?.to === square && premove.from) {
           const fromRow = 8 - Number(premove.from[1]);
@@ -89,6 +97,36 @@ export class ZugzwangBoard {
       }
     }
     this.root.replaceChildren(frag);
+  }
+
+  #reviewBadge(annotation) {
+    const badge = document.createElement('span');
+    badge.className = `zz-review-badge mark-${annotation.key || 'good'}`;
+    badge.setAttribute('aria-hidden', 'true');
+    badge.title = `${annotation.label || annotation.key || 'Move'} annotation`;
+    const key = annotation.key;
+    if (key === 'best' || key === 'excellent' || key === 'checkmate') {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      svg.setAttribute('focusable', 'false');
+      if (key === 'best') {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', 'M2 10h4v11H2zM22 11.1c0-1.1-.9-2-2-2h-6.1l.9-4.3.03-.35c0-.42-.17-.8-.45-1.08L13.3 2 6.8 8.5c-.36.36-.58.86-.58 1.4V19c0 1.1.9 2 2 2h8.8c.83 0 1.55-.51 1.86-1.25l3-7.05c.09-.22.14-.46.14-.7v-.9z');
+        path.setAttribute('fill', 'currentColor'); svg.append(path);
+      } else if (key === 'excellent') {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', 'M12 2.4l2.93 5.94 6.56.95-4.75 4.63 1.12 6.53L12 17.37l-5.86 3.08 1.12-6.53L2.5 9.29l6.57-.95L12 2.4z');
+        path.setAttribute('fill', 'currentColor'); path.setAttribute('stroke', 'currentColor'); path.setAttribute('stroke-linejoin', 'round'); svg.append(path);
+      } else {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', 'M8 3L6 21M18 3l-2 18M3 9h18M2 15h18');
+        path.setAttribute('fill', 'none'); path.setAttribute('stroke', 'currentColor'); path.setAttribute('stroke-width', '2.8'); path.setAttribute('stroke-linecap', 'round'); svg.append(path);
+      }
+      badge.append(svg);
+    } else {
+      badge.textContent = annotation.mark || ({ brilliant:'!!', great:'!', good:'✓', inaccuracy:'?', mistake:'?!', blunder:'??', 'missed-win':'?!', book:'▤' }[key] || '·');
+    }
+    return badge;
   }
 
   #piece(color, type) {
