@@ -737,12 +737,34 @@ socket.on('start', (s) => {
   if (!game.moves.length) Sound.play('start'); // not on reconnects
 });
 
+function refreshSelectionAfterTurnChange(preferredSquare = null) {
+  if (!game) return false;
+  const myTurn = game.chess.turn() === game.color;
+  const position = myTurn ? game.chess : getPremovePlanningChess();
+  const source = [selected, preferredSquare, board.getActiveDragSource()].find((square) => {
+    const piece = square ? position.get(square) : null;
+    return piece?.color === game.color;
+  });
+  if (!source) { selected = null; targets = []; return false; }
+  selected = source;
+  targets = myTurn
+    ? game.chess.moves({ square:selected, verbose:true }).map((move) => move.to)
+    : premoveTargets(selected, position);
+  if (!targets.length) { selected = null; targets = []; return false; }
+  board.pulseTurnHandoff();
+  return true;
+}
 socket.on('state', (s) => {
   if (!game) return;
+  const wasWaitingForOpponent = game.chess.turn() !== game.color;
+  const activeDragSource = board.getActiveDragSource();
+  const selectedBeforeHandoff = selected || activeDragSource;
   game.chess.load(s.fen);
   game.clock = s.clock; game.turn = s.turn; game.last = [s.from, s.to]; game.stamp = Date.now(); game.moves.push(s.san);
   game.sending = false;
-  selected = null; targets = []; closePromo();
+  closePromo();
+  if (wasWaitingForOpponent && game.chess.turn() === game.color) refreshSelectionAfterTurnChange(selectedBeforeHandoff);
+  else { selected = null; targets = []; }
   Sound.play(Sound.forMove(s.san));
   runPremove();
   setStatus(); render();
@@ -810,7 +832,7 @@ socket.on('over', (o) => {
     paintPlayers(); drawClocks(); render(); idleVeil();
   } };
   const resultActions = o.saved && o.stored && game?.id
-    ? [{ label: 'Analyse game', primary: true, onClick: () => { location.href = '/analysis.html?id=' + encodeURIComponent(game.id); } }, playAgain]
+    ? [{ label: 'Analyse game', primary: true, onClick: () => { location.href = '/analysis.html?id=' + encodeURIComponent(game.id) + '&color=' + game.color; } }, playAgain]
     : [playAgain];
   veil({
     title: o.result === '1/2-1/2' ? 'Draw' : won ? 'You won' : 'You lost',
@@ -1011,8 +1033,8 @@ function cancelPremove() {
   game.preMoves = []; selected = null; targets = []; render();
 }
 // Run the next queued premove as soon as it is our turn. Each move is rechecked on the real
-// position; if the opponent changed the board so it no longer works, discard that move and
-// inspect the next queued idea rather than sending an illegal move to the server.
+// position; if the opponent changed the board so it no longer works, discard it and
+// its dependent queued moves, then keep the original piece selected when possible.
 function runPremove() {
   if (!game || game.over || game.sending || game.chess.turn() !== game.color) return;
   while (game.preMoves?.length) {
@@ -1021,8 +1043,23 @@ function runPremove() {
       move.to === pre.to && (!move.promotion || move.promotion === (pre.promotion || 'q'))
     );
     if (!legal) {
-      $('#drawNote').textContent = `Premove ${pre.from} → ${pre.to} was cancelled because the position changed.`;
-      continue;
+      // Later queued moves depend on the first one, so discard the chain and
+      // keep its piece selected when it still exists. The player can immediately
+      // drag it to a fresh legal destination instead of selecting it again.
+      const dependent = game.preMoves.length;
+      game.preMoves = [];
+      const piece = game.chess.get(pre.from);
+      if (piece?.color === game.color) {
+        selected = pre.from;
+        targets = game.chess.moves({ square:selected, verbose:true }).map((move) => move.to);
+        if (targets.length) board.pulseTurnHandoff();
+        else { selected = null; targets = []; }
+      } else {
+        refreshSelectionAfterTurnChange(selected || board.getActiveDragSource());
+      }
+      $('#drawNote').textContent = `Premove ${pre.from} → ${pre.to} was cancelled because the position changed${dependent ? `; ${dependent} later queued move${dependent === 1 ? '' : 's'} also cleared` : ''}. Choose a new destination.`;
+      render();
+      return;
     }
     selected = null; targets = [];
     sendMove(pre.from, pre.to, pre.promotion || 'q', pre);

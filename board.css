@@ -188,3 +188,21 @@
 
 .zz-board .sq.has-piece { cursor: grab; }
 .zz-board .sq.drag-origin { cursor: grabbing; }
+
+
+/* Brief visual feedback when a premove selection becomes a live move. */
+.zz-board.zz-turn-handoff .sq.sel {
+  animation: zz-turn-handoff 520ms ease-out;
+}
+.zz-board.zz-turn-handoff .sq.target::after {
+  animation: zz-target-handoff 520ms ease-out;
+}
+@keyframes zz-turn-handoff {
+  0% { box-shadow: inset 0 0 0 5px rgba(255,255,255,.92), 0 0 16px rgba(129,182,76,.72); }
+  100% { box-shadow: inset 0 0 0 3px var(--accent, #81b64c); }
+}
+@keyframes zz-target-handoff {
+  0% { opacity: .25; transform: scale(.7); }
+  55% { opacity: 1; transform: scale(1.12); }
+  100% { opacity: 1; transform: scale(1); }
+}

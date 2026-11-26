@@ -32,8 +32,8 @@ test('move explanations use plain language instead of engine jargon', () => {
     row:{san:'Rxe8+', color:'w', move:{piece:'r',from:'e1',to:'e8',captured:'q'}},
     label:{key:'excellent'}, loss:0.01, after:{whiteScore:3.2}
   });
-  assert.match(capture, /your rook takes the opponent’s queen on e8/i);
-  assert.match(capture, /puts the opponent’s king in check/i);
+  assert.match(capture, /your rook takes your opponent’s queen on e8/i);
+  assert.match(capture, /puts your opponent’s king in check/i);
   assert.doesNotMatch(capture, /expected-score points|pawns/i);
 
   const miss = explainMoveQuality({

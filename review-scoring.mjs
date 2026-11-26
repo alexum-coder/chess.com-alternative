@@ -299,22 +299,34 @@ export function pieceName(piece) {
   return ({ p:'pawn', n:'knight', b:'bishop', r:'rook', q:'queen', k:'king' })[String(piece || '').toLowerCase()] || 'piece';
 }
 
-function positionPhrase(after, color) {
-  const value = scoreForColor(after?.whiteScore, color);
+function movePerspective(row, viewerColor) {
+  const isYourMove = !viewerColor || row?.color === viewerColor;
+  return {
+    isYourMove,
+    actor: isYourMove ? 'You' : 'Your opponent',
+    actorPossessive: isYourMove ? 'your' : 'their',
+    targetPossessive: isYourMove ? "your opponent’s" : 'your',
+    replyActor: isYourMove ? 'Your opponent' : 'You',
+    king: isYourMove ? 'your king' : 'your opponent’s king'
+  };
+}
+
+function positionPhrase(after, viewerColor) {
+  const value = scoreForColor(after?.whiteScore, viewerColor);
   if (!Number.isFinite(value)) return 'The engine could not judge the position clearly.';
   if (value >= 3) return 'You are winning.';
   if (value >= 1.25) return 'You have a clear advantage.';
   if (value >= 0.35) return 'You are a little better.';
-  if (value <= -3) return 'The opponent is winning.';
-  if (value <= -1.25) return 'The opponent has a clear advantage.';
-  if (value <= -0.35) return 'The opponent is a little better.';
+  if (value <= -3) return 'Your opponent is winning.';
+  if (value <= -1.25) return 'Your opponent has a clear advantage.';
+  if (value <= -0.35) return 'Your opponent is a little better.';
   return 'The game is about even.';
 }
 
-function describeMoveIntent(row) {
+function describeMoveIntent(row, viewerColor) {
   const move = row?.move;
   if (!move) return 'This move changes the position.';
-
+  const role = movePerspective(row, viewerColor);
   const piece = String(move.piece || 'p').toLowerCase();
   const from = move.from || '—';
   const to = move.to || '—';
@@ -323,76 +335,105 @@ function describeMoveIntent(row) {
   const san = String(row.san || '');
   const flags = String(move.flags || '');
   const castle = san.startsWith('O-O-O') ? 'queen’s side' : san.startsWith('O-O') ? 'king’s side' : '';
+  const subject = role.isYourMove ? 'You' : 'Your opponent';
+  const possessive = role.actorPossessive;
   let description;
 
   if (castle) {
-    description = `You castle on the ${castle}, tucking your king away and bringing your rook into play.`;
+    description = `${subject} castle${role.isYourMove ? '' : 's'} on the ${castle}, tucking ${possessive} king away and bringing ${possessive} rook into play.`;
   } else if (flags.includes('e')) {
-    description = 'Your pawn captures en passant, taking the pawn that just moved past it.';
+    description = role.isYourMove
+      ? 'Your pawn captures en passant, taking the pawn that just moved past it.'
+      : 'Your opponent’s pawn captures one of your pawns en passant.';
   } else if (move.captured) {
-    description = `Your ${pieceLabel} takes the opponent’s ${pieceName(move.captured)} on ${to}.`;
+    description = role.isYourMove
+      ? `Your ${pieceLabel} takes your opponent’s ${pieceName(move.captured)} on ${to}.`
+      : `Your opponent’s ${pieceLabel} takes your ${pieceName(move.captured)} on ${to}.`;
   } else if (piece === 'p' && ['d4','e4','d5','e5'].includes(to)) {
-    description = `You push your ${from[0]}-pawn into the centre, helping you fight for control of the middle of the board.`;
+    description = role.isYourMove
+      ? `You push your ${from[0]}-pawn into the centre, helping you fight for control of the middle of the board.`
+      : `Your opponent pushes their ${from[0]}-pawn into the centre, challenging your control of the middle of the board.`;
   } else if (piece === 'p') {
     const flank = 'ab'.includes(file) ? 'the queen’s side' : 'gh'.includes(file) ? 'the king’s side' : 'the middle of the board';
-    description = `You push your ${from[0]}-pawn to ${to}, gaining space on ${flank}.`;
+    description = role.isYourMove
+      ? `You push your ${from[0]}-pawn to ${to}, gaining space on ${flank}.`
+      : `Your opponent pushes their ${from[0]}-pawn to ${to}, gaining space on ${flank}.`;
   } else if ((piece === 'n' || piece === 'b') && ((row.color === 'w' && from[1] === '1') || (row.color === 'b' && from[1] === '8'))) {
-    description = `You bring your ${pieceLabel} into the game, moving it from ${from} to ${to}.`;
+    description = role.isYourMove
+      ? `You bring your ${pieceLabel} into the game, moving it from ${from} to ${to}.`
+      : `Your opponent brings their ${pieceLabel} into the game, moving it from ${from} to ${to}.`;
   } else if (piece === 'n' && 'cdef'.includes(file) && '3456'.includes(to[1] || '')) {
-    description = `You move your knight to ${to}, closer to the centre where it can influence more of the board.`;
+    description = role.isYourMove
+      ? `You move your knight to ${to}, closer to the centre where it can influence more of the board.`
+      : `Your opponent moves their knight to ${to}, closer to the centre where it can influence more of the board.`;
   } else if (piece === 'b') {
-    description = `You move your bishop to ${to}, giving it a new diagonal to work along.`;
+    description = `${subject} move${role.isYourMove ? '' : 's'} ${possessive} bishop to ${to}, giving it a new diagonal to work along.`;
   } else if (piece === 'r') {
-    description = `You move your rook to ${to}, giving it a more active line to work along.`;
+    description = `${subject} move${role.isYourMove ? '' : 's'} ${possessive} rook to ${to}, giving it a more active line to work along.`;
   } else if (piece === 'q') {
-    description = `You move your queen to ${to}, giving it new attacking and defensive options.`;
+    description = `${subject} move${role.isYourMove ? '' : 's'} ${possessive} queen to ${to}, giving it new attacking and defensive options.`;
   } else if (piece === 'k') {
-    description = `You move your king from ${from} to ${to}.`;
+    description = `${subject} move${role.isYourMove ? '' : 's'} ${possessive} king from ${from} to ${to}.`;
   } else {
-    description = `You move your ${pieceLabel} from ${from} to ${to}.`;
+    description = `${subject} move${role.isYourMove ? '' : 's'} ${possessive} ${pieceLabel} from ${from} to ${to}.`;
   }
 
-  if (san.includes('#')) description += ' It is checkmate—the game is over.';
-  else if (san.includes('+')) description += ' It also puts the opponent’s king in check.';
-  if (move.promotion) description += ` Your pawn reaches the other side and becomes a ${pieceName(move.promotion)}.`;
-  if (row.wasInCheck && !san.includes('+') && !san.includes('#')) description += ' It also gets your king out of check.';
+  if (san.includes('#')) description += role.isYourMove ? ' It is checkmate—the game is over.' : ' Your opponent has checkmated you. The game is over.';
+  else if (san.includes('+')) description += role.isYourMove ? ' It also puts your opponent’s king in check.' : ' It also puts your king in check.';
+  if (move.promotion) description += role.isYourMove
+    ? ` Your pawn reaches the other side and becomes a ${pieceName(move.promotion)}.`
+    : ` Your opponent’s pawn reaches the other side and becomes a ${pieceName(move.promotion)}.`;
+  if (row.wasInCheck && !san.includes('+') && !san.includes('#')) description += role.isYourMove
+    ? ' It also gets your king out of check.'
+    : ' It also gets your opponent’s king out of check.';
   return description;
 }
 
-function impactPhrase(loss) {
+function impactPhrase(loss, isYourMove = true) {
   if (!Number.isFinite(loss)) return '';
-  if (loss <= 0.02) return 'It barely changes your chances.';
-  if (loss <= 0.05) return 'You give up a little of your advantage.';
-  if (loss <= 0.12) return 'You let your opponent improve their position.';
-  if (loss <= 0.35) return 'You give your opponent a real chance to take control.';
-  return 'You give your opponent a major chance to turn the game around.';
+  if (loss <= 0.02) return 'It barely changes the game.';
+  if (isYourMove) {
+    if (loss <= 0.05) return 'You give up a little of your advantage.';
+    if (loss <= 0.12) return 'You let your opponent improve their position.';
+    if (loss <= 0.35) return 'You give your opponent a real chance to take control.';
+    return 'You give your opponent a major chance to turn the game around.';
+  }
+  if (loss <= 0.05) return 'Your opponent gives up a little of their advantage.';
+  if (loss <= 0.12) return 'Your opponent lets you improve your position.';
+  if (loss <= 0.35) return 'Your opponent gives you a real chance to take control.';
+  return 'Your opponent gives you a major chance to turn the game around.';
 }
 
-export function explainMoveQuality({ row, label, loss, rawPawnsLoss, bestSan, bestLineSan, replySan, after, replyCapturesMovedPiece = false, replyTacticalText = '', tacticalDetails = null }) {
-  if (label.key === 'checkmate') return `You checkmate your opponent with ${row.san}. The game is over.`;
+export function explainMoveQuality({ row, label, loss, rawPawnsLoss, bestSan, bestLineSan, replySan, after, replyCapturesMovedPiece = false, replyTacticalText = '', tacticalDetails = null, viewerColor = row?.color }) {
+  const role = movePerspective(row, viewerColor);
+  const isYourMove = role.isYourMove;
+  if (label.key === 'checkmate') return isYourMove
+    ? `You checkmate your opponent with ${row.san}. The game is over.`
+    : `Your opponent checkmates you with ${row.san}. The game is over.`;
   if (label.key === 'book') {
     const openings = Array.isArray(row.bookOpenings) ? row.bookOpenings : [];
-    if (!openings.length) return 'This is a recognised opening move. You’re following a line that players have studied and used for many years.';
-    if (openings.length === 1) return `This is a well-known move in the ${openings[0]} opening. Players have studied this line for many years.`;
-    return `This move appears in several well-known openings: ${openings.slice(0, 3).join(', ')}. These are established lines that players have studied for many years.`;
+    const actor = isYourMove ? 'You are' : 'Your opponent is';
+    if (!openings.length) return `${actor} following a recognised opening line that players have studied for many years.`;
+    if (openings.length === 1) return `${actor} following a well-known line in the ${openings[0]} opening.`;
+    return `${isYourMove ? 'Your move' : 'Your opponent’s move'} appears in several well-known openings: ${openings.slice(0, 3).join(', ')}. These are established lines that players have studied for many years.`;
   }
 
-  const intent = describeMoveIntent(row);
+  const intent = describeMoveIntent(row, viewerColor);
   const alternative = bestSan && bestSan !== row.san ? ` A stronger choice was ${bestSan}.` : '';
   const continuation = bestLineSan && bestSan && bestSan !== row.san ? ` One possible follow-up is ${bestLineSan}.` : '';
-  const reply = replySan ? ` The opponent’s best reply is ${replySan}.${replyTacticalText ? ` ${replyTacticalText}` : ''}` : '';
-  const impact = impactPhrase(loss);
-  const position = positionPhrase(after, row.color);
+  const replyLabel = isYourMove ? 'Your opponent’s' : 'Your';
+  const reply = replySan ? ` ${replyLabel} best reply is ${replySan}.${replyTacticalText ? ` ${replyTacticalText}` : ''}` : '';
+  const impact = impactPhrase(loss, isYourMove);
+  const position = positionPhrase(after, viewerColor);
   const opponentHasForcedMate = after?.score?.type === 'mate' && Number(after.score.value) > 0;
+  const actorPoss = isYourMove ? 'your' : 'your opponent’s';
 
-  // Explain the actual consequence found in the engine's principal variation.
-  // A grade alone is not an explanation: name the piece, square and capture.
   if (label.key === 'blunder' || label.key === 'mistake') {
     const gradeName = label.key === 'blunder' ? 'blunder' : 'mistake';
     if (opponentHasForcedMate) {
-      const matingStart = replySan ? `The opponent can start with ${replySan}` : 'The opponent has a forced mating attack';
-      const queenWon = row.move?.captured === 'q' ? ' Even though you win the queen, it does not stop the attack.' : '';
-      return `${intent} This is a ${gradeName} because it allows a forced mating sequence. ${queenWon}${matingStart} and force mate against your king. ${alternative}${continuation}`;
+      const matingStart = replySan ? `${isYourMove ? 'Your opponent can start' : 'You can start'} with ${replySan}` : (isYourMove ? 'Your opponent has a forced mating attack' : 'You have a forced mating attack');
+      const queenWon = row.move?.captured === 'q' ? (isYourMove ? ' Even though you win the queen, it does not stop the attack.' : ' Even though your opponent wins the queen, you can still force mate.') : '';
+      return `${intent} This is a ${gradeName} because it allows ${isYourMove ? 'your opponent' : 'you'} to force checkmate. ${queenWon}${matingStart} and force mate against ${role.king}.${alternative}${continuation}`;
     }
 
     const materialLoss = tacticalDetails?.netMaterialLoss;
@@ -402,83 +443,85 @@ export function explainMoveQuality({ row, label, loss, rawPawnsLoss, bestSan, be
       const capture = lostPiece.san ? `with ${lostPiece.san}` : '';
       let materialReply;
       if (tacticalDetails.wonValue <= 0) {
-        materialReply = 'You do not win any material back in the best line.';
+        materialReply = isYourMove ? 'You do not win any material back in the best line.' : 'Your opponent does not win any material back in the best line.';
       } else if (materialLoss >= 4.5) {
-        materialReply = 'Even after winning something back, you still lose much more material than you gain.';
+        materialReply = isYourMove ? 'Even after winning something back, you still lose much more material than you gain.' : 'Even after winning something back, your opponent still loses much more material than they gain.';
       } else {
-        materialReply = 'You win a little material back, but not enough to make up for the piece you lose.';
+        materialReply = isYourMove ? 'You win a little material back, but not enough to make up for the piece you lose.' : 'Your opponent wins a little material back, but not enough to make up for the piece they lose.';
       }
-      return `${intent} This is a ${gradeName} because it leaves your ${piece} on ${lostPiece.square} vulnerable. The opponent can win it ${capture}. ${materialReply} ${alternative}${continuation}`;
+      const whoCanWin = isYourMove ? 'The opponent can win' : 'You can win';
+      return `${intent} This is a ${gradeName} because it leaves ${actorPoss} ${piece} on ${lostPiece.square} vulnerable. ${whoCanWin} it ${capture}. ${materialReply} ${alternative}${continuation}`;
     }
 
     if (replyCapturesMovedPiece) {
       const piece = pieceName(row.move?.piece);
       const captured = row.move?.captured ? pieceName(row.move.captured) : '';
-      const exchange = captured
-        ? `You take their ${captured}, but they can take your ${piece} straight back.`
-        : `The opponent can take your ${piece} on ${row.move?.to || 'that square'} straight away`;
-      return `${intent} This is a ${gradeName} because ${exchange} You do not get a favourable exchange.${alternative}${position}`;
+      const exchange = isYourMove
+        ? (captured ? `You take their ${captured}, but they can take your ${piece} straight back.` : `The opponent can take your ${piece} on ${row.move?.to || 'that square'} straight away.`)
+        : (captured ? `Your opponent takes your ${captured}, but you can take their ${piece} straight back.` : `You can take your opponent’s ${piece} on ${row.move?.to || 'that square'} straight away.`);
+      return `${intent} This is a ${gradeName} because ${exchange} The exchange does not work out in ${isYourMove ? 'your' : 'your opponent’s'} favour.${alternative}${position}`;
     }
 
-    if (replyTacticalText) {
-      const reason = replyTacticalText.replace(/^That /, 'The opponent’s reply ' + (replySan || '') + ' ');
-      return `${intent} This is a ${gradeName} because ${reason} ${alternative}${position}${continuation}`;
-    }
+    if (replyTacticalText) return `${intent} This is a ${gradeName} because ${replyTacticalText} ${alternative}${position}${continuation}`;
 
     const fallbackReason = replySan
-      ? `The opponent's strongest reply is ${replySan}, which gives them a much stronger position.`
-      : 'The move gives the opponent a major advantage and leaves you in a much worse position.';
+      ? `${isYourMove ? 'The opponent’s' : 'Your'} strongest reply is ${replySan}, which gives ${isYourMove ? 'them' : 'you'} a much stronger position.`
+      : `The move gives ${isYourMove ? 'the opponent' : 'you'} a major advantage and leaves ${isYourMove ? 'you' : 'your opponent'} in a much worse position.`;
     const gradeImpact = label.key === 'mistake'
-      ? 'It gives your opponent a real chance to take control.'
-      : 'It gives your opponent a major chance to turn the game around.';
+      ? (isYourMove ? 'It gives your opponent a real chance to take control.' : 'It gives you a real chance to take control.')
+      : (isYourMove ? 'It gives your opponent a major chance to turn the game around.' : 'It gives you a major chance to turn the game around.');
     const saturatedSwing = Number.isFinite(rawPawnsLoss) && rawPawnsLoss >= 4 && Number.isFinite(loss) && loss <= 0.02
       ? 'The position was already very one-sided, so the win chances barely moved, but the evaluation still got much worse.'
       : '';
-    return `${intent} This is a ${gradeName}. ${gradeImpact} ${fallbackReason} ${saturatedSwing} ${alternative || 'The safer move was to keep your pieces protected.'} ${position}${continuation}`;
+    return `${intent} This is a ${gradeName}. ${gradeImpact} ${fallbackReason} ${saturatedSwing} ${alternative || 'A safer move would have kept the pieces protected.'} ${position}${continuation}`;
   }
 
   if (row.move?.captured === 'q') {
-    if (opponentHasForcedMate) {
-      return `${intent} Even though you win the queen, the opponent can still force checkmate. That means the queen won’t save the game.${reply}${alternative}${continuation}`;
-    }
-    if (replyCapturesMovedPiece) {
-      return `${intent} But the opponent can immediately take back the piece that captured the queen with ${replySan}. The exchange does not work out in your favour.${position}${alternative}${continuation}`;
-    }
-    if (label.queenCaptureProtected) {
-      return `${intent} And the good news: the engine still sees you as clearly ahead after the exchange. This queen win works out well for you.${position}${alternative}${continuation}${reply}`;
-    }
-    return `${intent} Winning the queen does not automatically win the game; the opponent still has counterplay. ${position}${alternative}${continuation}${reply}`;
+    if (opponentHasForcedMate) return isYourMove
+      ? `${intent} Even though you win the queen, the opponent can still force checkmate. That means the queen won’t save the game.${reply}${alternative}${continuation}`
+      : `${intent} Your opponent wins your queen, but you can still force checkmate in this position.${reply}${alternative}${continuation}`;
+    if (replyCapturesMovedPiece) return isYourMove
+      ? `${intent} But the opponent can immediately take back the piece that captured the queen with ${replySan}. The exchange does not work out in your favour.${position}${alternative}${continuation}`
+      : `${intent} You can immediately take back the piece that captured your queen with ${replySan}. The exchange works out in your favour.${position}${alternative}${continuation}`;
+    if (label.queenCaptureProtected) return isYourMove
+      ? `${intent} And the good news: the engine still sees you as clearly ahead after the exchange. This queen win works out well for you.${position}${alternative}${continuation}${reply}`
+      : `${intent} Your opponent has won your queen, and the position is still evaluated in your favour.${position}${alternative}${continuation}${reply}`;
+    return isYourMove
+      ? `${intent} Winning the queen does not automatically win the game; the opponent still has counterplay. ${position}${alternative}${continuation}${reply}`
+      : `${intent} Your opponent has won your queen. Look for active counterplay, but the engine sees this as a serious material loss. ${position}${alternative}${continuation}${reply}`;
   }
 
-  if (label.key === 'brilliant') {
-    return `${intent} A clever sacrifice: you leave a valuable piece available to take, but the follow-up gives you enough in return. Your opponent is better off refusing it.${reply}${continuation}`;
-  }
-  if (label.key === 'best') {
-    return `${intent} Best move. This is the engine’s top choice and keeps your position as strong as possible. ${position}${reply}`;
-  }
+  if (label.key === 'brilliant') return isYourMove
+    ? `${intent} A clever sacrifice: you leave a valuable piece available to take, but the follow-up gives you enough in return. Your opponent is better off refusing it.${reply}${continuation}`
+    : `${intent} Your opponent finds a clever sacrifice: they leave a valuable piece available to take, but the follow-up gives them enough in return. You are better off refusing it.${reply}${continuation}`;
+  if (label.key === 'best') return `${intent} ${isYourMove ? 'Best move. This is the engine’s top choice and keeps your position as strong as possible.' : 'Best move by your opponent. The engine sees this as their strongest choice.'} ${position}${reply}`;
   if (label.key === 'great') {
     const reason = row.legalMoveCount === 1
-      ? 'You found the only move that keeps the position together. Well spotted.'
-      : 'A clever find that turns a difficult position in your favour.';
+      ? (isYourMove ? 'You found the only move that keeps the position together. Well spotted.' : 'Your opponent found the only move that keeps their position together.')
+      : (isYourMove ? 'A clever find that turns a difficult position in your favour.' : 'A clever find that keeps your opponent’s position together.');
     return `${intent} ${reason} ${position}${reply}${continuation}`;
   }
-  if (label.key === 'excellent') {
-    return `${intent} A very strong move. You keep almost all of your advantage. ${impact}${alternative}${reply}`;
-  }
-  if (label.key === 'good') {
-    return `${intent} A solid choice that keeps you in a good position. ${alternative || 'There was no major problem with this move.'}${reply}`;
-  }
-  if (label.key === 'inaccuracy') {
-    return `${intent} Not your best option: this gives your opponent a little room to improve. ${alternative || 'A more careful move would have kept your advantage.'}${position}${reply}`;
-  }
+  if (label.key === 'excellent') return isYourMove
+    ? `${intent} A very strong move. You keep almost all of your advantage. ${impact}${alternative}${reply}`
+    : `${intent} A very strong move by your opponent. They keep most of their advantage. ${position}${alternative}${reply}`;
+  if (label.key === 'good') return isYourMove
+    ? `${intent} A solid choice that keeps you in a good position. ${alternative || 'There was no major problem with this move.'}${reply}`
+    : `${intent} A solid choice by your opponent. It keeps their position steady. ${position}${alternative}${reply}`;
+  if (label.key === 'inaccuracy') return isYourMove
+    ? `${intent} Not your best option: this gives your opponent a little room to improve. ${alternative || 'A more careful move would have kept your advantage.'}${position}${reply}`
+    : `${intent} This is not your opponent’s best option: it gives you a little room to improve. ${alternative || 'A more careful move would have kept their advantage.'}${position}${reply}`;
   if (label.key === 'miss') {
     const opportunity = row.missedOpportunity || {};
-    if (opportunity.type === 'mate') return `${intent} You had a forced checkmate available with ${opportunity.san || bestSan || 'the engine’s suggested move'}, but this move lets the chance slip away.${alternative}${continuation}${reply}`;
+    if (opportunity.type === 'mate') return isYourMove
+      ? `${intent} You had a forced checkmate available with ${opportunity.san || bestSan || 'the engine’s suggested move'}, but this move lets the chance slip away.${alternative}${continuation}${reply}`
+      : `${intent} Your opponent missed a forced checkmate with ${opportunity.san || bestSan || 'the engine’s suggested move'}, letting you escape the immediate threat.${alternative}${continuation}${reply}`;
     const piece = pieceName(opportunity.piece || 'piece');
-    return `${intent} Missed chance: you could have won your opponent’s ${piece} on ${opportunity.square || 'the board'}, but the chance is gone. The move to play was ${opportunity.bestSan || bestSan || 'the capture'}.${continuation}${reply}`;
+    return isYourMove
+      ? `${intent} Missed chance: you could have won your opponent’s ${piece} on ${opportunity.square || 'the board'}, but the chance is gone. The move to play was ${opportunity.bestSan || bestSan || 'the capture'}.${continuation}${reply}`
+      : `${intent} Your opponent missed a chance to win your ${piece} on ${opportunity.square || 'the board'}. That gives you a chance to keep it safe. The move was ${opportunity.bestSan || bestSan || 'the capture'}.${continuation}${reply}`;
   }
-  if (label.key === 'missed-win') {
-    return `${intent} You had a chance to turn this into a winning position, but this move lets your opponent back into the game.${alternative}${continuation}${reply}`;
-  }
+  if (label.key === 'missed-win') return isYourMove
+    ? `${intent} You had a chance to turn this into a winning position, but this move lets your opponent back into the game.${alternative}${continuation}${reply}`
+    : `${intent} Your opponent had a chance to improve their position, but this move lets you back into the game.${alternative}${continuation}${reply}`;
   return `${intent} ${impact || 'The engine has a more accurate way to play.'} ${position}${alternative}${reply}`;
 }

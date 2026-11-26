@@ -45,3 +45,22 @@ test('an invalidated first premove clears the dependent speculative sequence', (
 test('new games and undo clear computer premove state', () => {
   assert.match(html, /computerPreMoves = \[\]; computerPremoveMessage = '';/);
 });
+
+
+test('a selected premove piece stays selected and receives live legal targets when the bot moves', () => {
+  assert.match(html, /function refreshComputerSelectionForLiveTurn\(preferredSquare = null\)/);
+  const handoff = html.slice(html.indexOf('function makeBotMove'), html.indexOf('function uciToSan'));
+  assert.match(handoff, /refreshComputerSelectionForLiveTurn\(\)/);
+  assert.doesNotMatch(handoff, /selected = null; targets = \[\];\s*invalidateReview/);
+  assert.match(html, /const liveTargets = chess\.moves\(\{ square:selected, verbose:true \}\)/);
+  assert.match(html, /board\.getActiveDragSource\(\)/);
+  assert.match(html, /board\.pulseTurnHandoff\(\)/);
+});
+
+
+test('an invalidated computer premove restores its source piece as a live selection', () => {
+  const run = html.slice(html.indexOf('function runComputerPremove'), html.indexOf('    function render()'));
+  assert.match(run, /restoreFrom = pre\.from/);
+  assert.match(run, /refreshComputerSelectionForLiveTurn\(restoreFrom\)/);
+  assert.match(html, /const source = \[selected, preferredSquare, board\.getActiveDragSource\(\)\]/);
+});

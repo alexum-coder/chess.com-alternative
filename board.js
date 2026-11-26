@@ -12,6 +12,7 @@ export class ZugzwangBoard {
     this.dragPosition = null;
     this.pointerState = null;
     this.suppressPointerClick = false;
+    this.handoffTimer = null;
     this.dragLayer = document.createElement('div');
     this.dragLayer.className = 'zz-drag-piece';
     this.dragLayer.setAttribute('aria-hidden', 'true');
@@ -43,6 +44,23 @@ export class ZugzwangBoard {
   #pieceAt(position, square) {
     if (!Array.isArray(position) || !/^[a-h][1-8]$/.test(square || '')) return null;
     return position[8 - Number(square[1])]?.[FILES.indexOf(square[0])] || null;
+  }
+
+  // Expose the source square during an in-progress drag so a turn update can
+  // convert a premove drag into a normal move without making the player start over.
+  getActiveDragSource() {
+    return this.pointerState?.from || null;
+  }
+
+  pulseTurnHandoff() {
+    this.root.classList.remove('zz-turn-handoff');
+    void this.root.offsetWidth;
+    this.root.classList.add('zz-turn-handoff');
+    if (this.handoffTimer) clearTimeout(this.handoffTimer);
+    this.handoffTimer = setTimeout(() => {
+      this.root.classList.remove('zz-turn-handoff');
+      this.handoffTimer = null;
+    }, 520);
   }
 
   #pointerDown(event) {

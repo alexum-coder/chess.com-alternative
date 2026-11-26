@@ -6,11 +6,13 @@ const computer = await readFile(new URL('../computer.html', import.meta.url), 'u
 const analysis = await readFile(new URL('../analysis.html', import.meta.url), 'utf8');
 const nav = await readFile(new URL('../nav.js', import.meta.url), 'utf8');
 
-test('computer page opens on a randomized named bot-selection screen', () => {
+test('computer page opens on an Elo-sorted named bot-selection screen', () => {
   assert.match(computer, /id="bot-lobby"/);
   assert.match(computer, /id="bot-grid"/);
   assert.match(computer, /id="random-bot"/);
-  assert.match(computer, /function shuffledBots\(\)/);
+  assert.match(computer, /function sortedBots\(\)/);
+  assert.doesNotMatch(computer, /shuffledBots\(/);
+  assert.match(computer, /for \(const bot of sortedBots\(\)\)/);
   assert.match(computer, /function renderBotLobby\(\)/);
   assert.match(computer, /function selectBot\(bot\)/);
   assert.match(computer, /<main id="computer-game" hidden>/);

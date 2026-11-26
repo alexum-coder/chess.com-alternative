@@ -57,3 +57,13 @@ test('premove queue can be cancelled with the button, Escape or right-click', ()
   assert.match(live, /contextmenu[\s\S]*?game\.preMoves = \[\]/);
   assert.match(live, /preCancel/);
 });
+
+
+test('the shared board keeps an in-progress drag source and animates a premove-to-live-turn handoff', () => {
+  assert.match(board, /getActiveDragSource\(\)\s*\{[\s\S]*?this\.pointerState\?\.from/);
+  assert.match(board, /pulseTurnHandoff\(\)/);
+  assert.match(board, /this\.pointerState\?\.didDrag/);
+  const renderBody = board.slice(board.indexOf('render({'), board.indexOf('#appendSolutionArrow'));
+  assert.doesNotMatch(renderBody, /this\.pointerState\s*=\s*null/);
+  assert.match(css, /zz-turn-handoff/);
+});

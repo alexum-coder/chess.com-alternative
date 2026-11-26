@@ -168,7 +168,7 @@
     const t6 = document.createElement('td');
     const actions = document.createElement('div'); actions.className = 'game-actions';
     const analyse = document.createElement('a'); analyse.className = 'primary';
-    analyse.href = '/analysis.html?id=' + encodeURIComponent(g.id); analyse.textContent = 'Analyse';
+    analyse.href = '/analysis.html?id=' + encodeURIComponent(g.id) + '&color=' + mine; analyse.textContent = 'Analyse';
     const copy = document.createElement('button'); copy.textContent = 'Copy PGN';
     copy.onclick = async () => { try { await navigator.clipboard.writeText(g.pgn); copy.textContent = 'Copied'; setTimeout(() => (copy.textContent = 'Copy PGN'), 1500); } catch { copy.textContent = 'Failed'; } };
     actions.append(analyse, copy); t6.appendChild(actions); tr.appendChild(t6);

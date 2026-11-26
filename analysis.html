@@ -214,6 +214,7 @@
     const STANDARD_FEN = new Chess().fen();
     let record = null, worker = null, ready = false, busy = false, failed = false, running = false, autoStartPending = false, analysisError = null;
     let rows = [], positions = [], evaluations = [], selectedPly = 0, flipped = false, playTimer = null, bookEligible = true;
+    let viewerColor = null;
     const board = new ZugzwangBoard($('board'));
 
     const ANALYSIS_DEPTH = 14;
@@ -391,14 +392,18 @@
     }
     function explanation(label, expectedLoss, rawPawnsLoss, bestSan, bestLineSan, replySan, row, after) {
       const replyMove = moveFromUci(row.after, after.bestMove);
+      const moverIsViewer = !viewerColor || row.color === viewerColor;
       const replyCapturesMovedPiece = Boolean(replyMove?.captured && replyMove.to === row.move.to);
+      const replyActor = moverIsViewer ? 'Your opponent' : 'You';
       let replyTacticalText = '';
-      if (replyMove?.san?.includes('#')) replyTacticalText = 'That checkmates your king.';
-      else if (replyCapturesMovedPiece) replyTacticalText = `That takes back the piece you just moved.`;
-      else if (replyMove?.captured) replyTacticalText = `That wins your ${({p:'pawn',n:'knight',b:'bishop',r:'rook',q:'queen',k:'king'})[replyMove.captured] || 'piece'}.`;
-      else if (replyMove?.san?.includes('+')) replyTacticalText = 'That puts your king in check.';
+      if (replyMove?.san?.includes('#')) replyTacticalText = moverIsViewer ? 'That checkmates your king.' : 'That checkmates your opponent.';
+      else if (replyCapturesMovedPiece) replyTacticalText = moverIsViewer
+        ? 'That takes back the piece you just moved.'
+        : 'That lets you take back the piece your opponent just moved.';
+      else if (replyMove?.captured) replyTacticalText = `${replyActor} can win ${moverIsViewer ? 'your' : 'your opponent’s'} ${({p:'pawn',n:'knight',b:'bishop',r:'rook',q:'queen',k:'king'})[replyMove.captured] || 'piece'}.`;
+      else if (replyMove?.san?.includes('+')) replyTacticalText = moverIsViewer ? 'That puts your king in check.' : 'That puts your opponent’s king in check.';
       const tacticalDetails = pvMaterialConsequences(row, after);
-      return explainMoveQuality({ row, label, loss:expectedLoss, rawPawnsLoss, bestSan, bestLineSan, replySan, after, replyCapturesMovedPiece, replyTacticalText, tacticalDetails });
+      return explainMoveQuality({ row, label, loss:expectedLoss, rawPawnsLoss, bestSan, bestLineSan, replySan, after, replyCapturesMovedPiece, replyTacticalText, tacticalDetails, viewerColor });
     }
     // Keep classic text marks for most grades; Best, Excellent and Checkmate use inline vectors.
     const SUMMARY_MARKS = {
@@ -481,6 +486,8 @@
     }
     function setGameInfo(game) {
       record = game;
+      const requestedColor = params.get('color');
+      viewerColor = game.source === 'computer' ? 'w' : (requestedColor === 'w' || requestedColor === 'b' ? requestedColor : 'w');
       if (game.source === 'computer') { $('backLink').href = '/computer.html'; $('backLink').textContent = 'Back to computer'; }
       $('blackName').textContent = game.black_name || 'Black';
       $('whiteName').textContent = game.white_name || 'White';
@@ -614,7 +621,10 @@
       pieceSymbol.textContent = pieceGlyphs[row.color]?.[row.move.piece] || '♟';
       const pieceText = document.createElement('span');
       const sideName = row.color === 'w' ? 'White' : 'Black';
-      pieceText.textContent = `${sideName} ${pieceNames[row.move.piece] || 'piece'}`;
+      const pieceName = pieceNames[row.move.piece] || 'piece';
+      pieceText.textContent = viewerColor
+        ? (row.color === viewerColor ? `Your ${pieceName}` : `Your opponent’s ${pieceName}`)
+        : `${sideName} ${pieceName}`;
       const routeText = document.createElement('strong'); routeText.className = 'move-route';
       routeText.textContent = `${row.move.from} → ${row.move.to}`;
       route.append(pieceSymbol, pieceText, routeText);

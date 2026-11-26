@@ -383,8 +383,27 @@
       $('computer-premove-cancel').disabled = computerPreMoves.length === 0;
       $('computer-premove-note').textContent = computerPremoveMessage;
     }
+    function refreshComputerSelectionForLiveTurn(preferredSquare = null) {
+      if (chess.turn() !== 'w') { selected = null; targets = []; return false; }
+      const source = [selected, preferredSquare, board.getActiveDragSource()].find((square) => {
+        const piece = square ? chess.get(square) : null;
+        return piece?.color === 'w';
+      });
+      if (!source) { selected = null; targets = []; return false; }
+      selected = source;
+      const liveTargets = chess.moves({ square:selected, verbose:true }).map((move) => move.to);
+      if (!liveTargets.length) { selected = null; targets = []; return false; }
+      targets = liveTargets;
+      computerPremoveMessage = 'Your turn — finish the move you started planning.';
+      board.pulseTurnHandoff();
+      return true;
+    }
     function runComputerPremove() {
-      if (!computerPreMoves.length || chess.isGameOver() || chess.turn() !== 'w' || busy || reviewRunning) return;
+      if (!computerPreMoves.length || chess.isGameOver() || chess.turn() !== 'w' || busy || reviewRunning) {
+        render();
+        return;
+      }
+      let restoreFrom = null;
       while (computerPreMoves.length) {
         const pre = computerPreMoves.shift();
         const candidate = chess.moves({ square:pre.from, verbose:true }).find((move) =>
@@ -393,7 +412,8 @@
         if (!candidate) {
           const dependent = computerPreMoves.length;
           computerPreMoves = [];
-          computerPremoveMessage = `Premove ${pre.from} → ${pre.to} was cancelled because Stockfish changed the position${dependent ? `; ${dependent} later queued move${dependent === 1 ? '' : 's'} also cleared` : ''}.`;
+          restoreFrom = pre.from;
+          computerPremoveMessage = `Premove ${pre.from} → ${pre.to} was cancelled because Stockfish changed the position${dependent ? `; ${dependent} later queued move${dependent === 1 ? '' : 's'} also cleared` : ''}. Choose a new destination.`;
           break;
         }
         try {
@@ -415,7 +435,10 @@
           computerPremoveMessage = `Premove ${pre.from} → ${pre.to} was cancelled because it is no longer legal.`;
         }
       }
-      selected = null; targets = []; render();
+      // If there was no committed premove, keep the player's selected piece and
+      // refresh its destinations on the real board rather than forcing a reselection.
+      refreshComputerSelectionForLiveTurn(restoreFrom);
+      render();
     }
     function render() {
       const view = reviewPreview ? new Chess(reviewPreview.fen) : chess;
@@ -490,12 +513,14 @@
         const move = chess.move({ from:uci.slice(0,2), to:uci.slice(2,4), promotion:uci[4] || 'q' });
         if (move) lastMove = [move.from, move.to];
       } catch { /* Stockfish should always return a legal move for this position. */ }
-      selected = null; targets = [];
-      invalidateReview();
       if (chess.isGameOver()) {
+        selected = null; targets = [];
         computerPreMoves = [];
         computerPremoveMessage = 'The game ended before the queued premoves could be played.';
+      } else {
+        refreshComputerSelectionForLiveTurn();
       }
+      invalidateReview();
       render();
       if (!chess.isGameOver()) runComputerPremove();
     }
@@ -682,18 +707,13 @@
       }
       renderReviewSummary(rows);
     }
-    function shuffledBots() {
-      const list = [...BOT_ROSTER];
-      for (let i = list.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [list[i], list[j]] = [list[j], list[i]];
-      }
-      return list;
+    function sortedBots() {
+      return [...BOT_ROSTER].sort((a, b) => a.elo - b.elo);
     }
     function renderBotLobby() {
       const grid = $('bot-grid');
       grid.replaceChildren();
-      for (const bot of shuffledBots()) {
+      for (const bot of sortedBots()) {
         const card = document.createElement('button');
         card.type = 'button'; card.className = 'bot-card';
         card.setAttribute('aria-label', `Play ${bot.name}, approximately ${bot.elo} Elo`);
