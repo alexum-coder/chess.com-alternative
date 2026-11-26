@@ -1,6 +1,6 @@
 # Zugzwang — free online chess
 
-A responsive real-time chess site built with Node.js, Express, Socket.IO, chess.js and optional Supabase accounts. The refreshed interface uses a clean green-and-cream board, dark navigation, player cards, clocks and a compact side panel, while keeping Zugzwang branding.
+A responsive real-time chess site built with Node.js, Express, Socket.IO, chess.js and optional Supabase accounts. The refreshed interface uses a consistent dark theme, shared wood-textured chessboard skin, player cards, clocks and a compact side panel, while keeping Zugzwang branding.
 
 ## Run locally
 
@@ -20,6 +20,10 @@ Open http://localhost:3000 in two browser windows, choose the same time control 
 5. Restart the Node server. Keep `SUPABASE_SERVICE_KEY` server-side and out of source control.
 
 Email confirmation can be disabled temporarily in Supabase **Authentication → Providers → Email** while testing. Re-enable it before opening registrations publicly.
+
+## Game analysis and opening book
+
+The completed-game analysis page starts browser Stockfish automatically when a saved game is opened. It reviews the game at a balanced default depth and lets the user change depth for a new analysis. The opening guide shows curated book continuations and named opening lines for the current move-list position; these are guide lines, not a complete opening database.
 
 ## Stockfish engine review
 
@@ -77,7 +81,7 @@ The web page creates `/stockfish-worker.js` on the Zugzwang origin. That bootstr
 
 No browser engine computation is sent to the server. Server-side anti-cheat analysis uses a separate native Stockfish executable. You can keep it at `STOCKFISH_PATH`, or upload a **Linux ELF** executable to a private bucket: run `npm run upload:stockfish-native -- ./path/to/linux/stockfish`. The script gzip-compresses it and splits the gzip byte stream into Storage objects no larger than `STOCKFISH_NATIVE_PART_SIZE_MB` (45 MiB by default, below Supabase Free's 50 MB per-file cap). It uploads objects such as `stockfish-linux-x64.gz.part-001` and `.part-002`. After the script prints `STOCKFISH_NATIVE_OBJECTS`, set that comma-separated value and `STOCKFISH_NATIVE_BUCKET=stockfish-native` in Render only (leave these unset in local Windows `.env` files). At startup the server downloads each private object in order, reconstructs the original gzip stream, decompresses the executable into its temporary directory, sets executable permissions, and validates its UCI handshake. The prior single-object `STOCKFISH_NATIVE_OBJECT` variable remains supported for backwards compatibility. Never use the Windows `.exe` on Render, which runs Linux, and never make the native-engine bucket public.
 
-Supabase Free projects currently have a 50 MB maximum per uploaded file. The native uploader uses 45 MiB parts by default to leave room below that per-object cap. Pro and higher plans can configure larger limits if desired. (See [Supabase upload limits](https://supabase.com/docs/guides/storage/uploads/file-limits).) Stockfish.js is GPL-3.0; retain its license and source notices with distributions that include it. The page provides local play and unlocks position analysis and move-by-move review only after the computer game is complete. The dedicated `/analysis.html?id=GAME_ID` page reviews saved online games with a replayable board, move classifications, engine continuations and an evaluation graph. The labels are heuristic centipawn-loss bands and conservative sacrifice checks, not official Chess.com classifications.
+Supabase Free projects currently have a 50 MB maximum per uploaded file. The native uploader uses 45 MiB parts by default to leave room below that per-object cap. Pro and higher plans can configure larger limits if desired. (See [Supabase upload limits](https://supabase.com/docs/guides/storage/uploads/file-limits).) Stockfish.js is GPL-3.0; retain its license and source notices with distributions that include it. The page provides local play and unlocks position analysis and move-by-move review only after the computer game is complete. The dedicated `/analysis.html?id=GAME_ID` page reviews saved online games with a replayable board, move classifications, engine continuations and an evaluation graph. Move grading converts Stockfish's side-to-move score to White's perspective and prefers Stockfish's UCI WDL output (win/draw/loss probabilities) to compare each mover's expected game score; a centipawn-to-expected-score curve is the fallback when WDL is unavailable. This keeps moves inside an already-won position from being over-penalised, avoids using UCI bound scores as exact values, and only awards Brilliant to a near-best, engine-approved piece sacrifice. Queen captures that leave the mover with a clearly favourable expected score are guarded against false Blunder labels unless the opponent has a forced mate. Move explanations include the best alternative, engine continuation, strongest reply and tactical consequences when the reply captures, checks or checkmates. The accuracy percentages are Zugzwang estimates, not Chess.com's proprietary formula or official classifications.
 
 ## Puzzles (Lichess CC0)
 
@@ -104,5 +108,10 @@ After the migration succeeds, redeploy/restart the Render service so the server 
 Open `/api/health` on the deployed site to verify that both browser Stockfish files are reachable from Supabase Storage. The response should show `browserStockfish.source: "supabase-storage"` and `browserStockfish.js: true`, `browserStockfish.wasm: true`.
 
 The computer page queues a move made while Stockfish is still downloading/initializing, instead of silently dropping the engine request. It also displays worker/Storage/WASM startup errors on the page. The uploaded pair must be `stockfish-19-lite-single.js` and its matching `stockfish-19-lite-single.wasm` from the same `stockfish@19.0.1` package version.
-##   c h e s s . c o m - a l t e r n a t i v e  
+#
+
+### Review scoring
+
+`review-scoring.mjs` contains the shared UCI score parser, White-perspective evaluation conversion, expected-score loss model and conservative move labels. Its regression tests live in `test/review-scoring.test.mjs`. Run `npm test` and `npm run check` before deployment.
+#   c h e s s . c o m - a l t e r n a t i v e  
  

@@ -28,29 +28,8 @@
   /* Isolate every board layer. Piece images have local z-index values; without this stacking context
      they can escape above the result veil in some browsers (the supplied screenshot). */
   .boardwrap { position: relative; isolation: isolate; }
-  #board { position: relative; z-index: 0; display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); aspect-ratio: 1; border-radius: 10px; overflow: hidden;
-    box-shadow: 0 24px 40px -24px rgba(0,0,0,.8); user-select: none; touch-action: manipulation; }
-  .sq { position: relative; display: grid; place-items: center; cursor: pointer; min-width: 0; min-height: 0; }
-  .sq.l { background-color: var(--light); } .sq.d { background-color: var(--dark); }
-  .sq.last::before { content: ""; position: absolute; inset: 0; background: var(--last); }
-  .sq.chk { background-image: radial-gradient(circle, rgba(255,70,70,.9) 0, rgba(255,70,70,0) 72%); }
-  .sq.sel { box-shadow: inset 0 0 0 3px var(--accent); }
-  .sq.target::after { content: ""; position: absolute; width: 28%; height: 28%; border-radius: 50%; background: var(--dot); }
-  .sq.target.cap::after { width: 88%; height: 88%; background: none; border: 5px solid var(--dot); }
-  .sq i { position: absolute; z-index: 3; font: 700 .64rem/1 Manrope, sans-serif; font-style: normal; opacity: .8; pointer-events: none; }
-  .sq i.f { right: 4px; bottom: 3px; } .sq i.r { left: 4px; top: 3px; }
-  .sq.l i { color: var(--dark); } .sq.d i { color: var(--light); }
-  .pc { position: relative; z-index: 1; width: 86%; height: 86%; pointer-events: none;
-    filter: drop-shadow(0 1.5px 1.5px rgba(0,0,0,.35)); }
-  .pc.ghost { position: absolute; opacity: .5; z-index: 2; }
-
-  /* premoves: blue, so they are never confused with the yellow last-move highlight */
-  .sq.pre-from::before, .sq.pre-to::before { content: ""; position: absolute; inset: 0; background: var(--pre); }
-  .sq.target.pre::after { background: var(--pre-dot); }
-  .sq.target.cap.pre::after { background: none; border-color: var(--pre-dot); }
-  .sq.last .pc { animation: land .16s ease-out; }
-  @keyframes land { from { transform: scale(1.12); } to { transform: scale(1); } }
-  .sq:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+  #board { position: relative; z-index: 0; width: 100%; }
+  /* Every board square is styled by the shared /board.css skin. */
 
   .veil { position: absolute; inset: 0; z-index: 50; display: grid; place-items: center; border-radius: 10px;
     background: rgba(16,22,29,.66); backdrop-filter: blur(2px); }
@@ -152,41 +131,41 @@
   .moderation-actions .danger { color:var(--loss); }
   @media (max-width:520px) { .social-item { flex-wrap:wrap; } .social-item .spacer { display:none; } }
 
-  /* Clean club-style interface: bright workspace, green primary actions and a stronger board focus. */
+  /* Unified dark chess workspace shared with the analysis screen. */
   main { max-width: 1180px; padding: 22px 18px 52px; gap: 22px; grid-template-columns: minmax(0, 680px) minmax(300px, 1fr); }
-  .player { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 2px 8px rgba(35,49,39,.05); }
-  .player.turn { border-color: #81b64c; box-shadow: 0 0 0 1px rgba(129,182,76,.2); }
-  .av { background: #edf3e9; color: #42652d; }
-  .clock { background: #303b32; color: #fff; border-radius: 7px; }
+  .player { background: var(--panel); border: 1px solid var(--line); border-radius: 9px; box-shadow: 0 4px 14px rgba(0,0,0,.16); }
+  .player.turn { border-color: #81b64c; box-shadow: 0 0 0 1px rgba(129,182,76,.22); }
+  .av { background: #3b4636; color: #c6e3ad; }
+  .clock { background: #242321; color: #f3f1ec; border-radius: 7px; }
   .clock.active { background: #81b64c; color: #172014; }
-  .clock.low { color: #ffd1cc; } .clock.active.low { background: #c64c45; color: #fff; }
-  #board { border-radius: 8px; box-shadow: 0 12px 28px rgba(34,48,37,.17); }
-  .veil { background: rgba(31,42,33,.63); backdrop-filter: blur(3px); }
-  .veil-card { background: #fff; color: #262522; border: 1px solid #e3e8e2; border-radius: 12px; box-shadow: 0 18px 48px rgba(0,0,0,.23); }
-  .veil-card p { color: #68736a; }
+  .clock.low { color: #ffaaa5; } .clock.active.low { background: #c64c45; color: #fff; }
+  #board { border-radius: 8px; }
+  .veil { background: rgba(15,14,13,.72); backdrop-filter: blur(4px); }
+  .veil-card { background: #302f2d; color: #f3f1ec; border: 1px solid #55514a; border-radius: 12px; box-shadow: 0 18px 48px rgba(0,0,0,.45); }
+  .veil-card p { color: #c9c4bb; }
   .promo { z-index: 60; }
   .veil { z-index: 70; }
-  .promo-btn:nth-child(even) { background: #d9e4d0; }
-  .panel { border: 1px solid #e3e8e3; border-radius: 11px; box-shadow: 0 2px 9px rgba(35,49,39,.045); }
+  .promo-btn:nth-child(even) { background: #d7c09b; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 11px; box-shadow: 0 6px 18px rgba(0,0,0,.18); }
   .panel h2 { font-size: 1.04rem; letter-spacing: -.015em; }
-  .panel h3 { color: #4d5a4e; }
-  input, .tournament-form select { background: #fbfcfb; border-color: #d9e0d9; color: var(--ink); }
-  button { background: #f4f7f3; border-color: #dce4db; color: #29352a; transition: background .12s, border-color .12s, transform .12s; }
-  button:hover { background: #edf4e9; border-color: #a8c88f; }
+  .panel h3 { color: #ddd9d1; }
+  input, .tournament-form select { background: var(--panel2); border-color: var(--line); color: var(--ink); }
+  button { background: #393835; border-color: #4a4842; color: #f3f1ec; transition: background .12s, border-color .12s, transform .12s; }
+  button:hover { background: #484641; border-color: #77736a; }
   button.primary { background: #81b64c; border-color: #81b64c; color: #172014; }
-  button.primary:hover { background: #72a63d; border-color: #72a63d; }
-  .modes button { background: #f7f9f6; border-color: #e1e7e0; }
-  .modes button b { color: #2c382d; }
-  .modes button:hover { background: #edf5e8; border-color: #9fc783; }
-  #moves .m.cur { background: #eaf3e4; color: #456c2f; }
-  .social-item { background: #fafcfa; border-color: #e4e9e3; }
-  .chat-log { background: #fbfcfb; border-color: #e2e8e1; }
-  .tournament-meta, .hint, .foot { color: #737d73; }
-  .moderation-card { border-color: #e4e9e3; }
-  .moderation-actions .danger, .social-item button.danger { color: #b4443c; }
-  .social-item button.danger { background: #fff7f6; border-color: #f0d9d6; }
-  .prebar { background: #edf3ff; border-color: #c4d5ff; }
-  .drawbar { box-shadow: 0 5px 18px rgba(31,42,33,.12); }
+  button.primary:hover { background: #93c45e; border-color: #93c45e; }
+  .modes button { background: #343330; border-color: #4a4842; }
+  .modes button b { color: #f3f1ec; }
+  .modes button:hover { background: #41403b; border-color: #81b64c; }
+  #moves .m.cur { background: #45443f; color: #b6df91; }
+  .social-item { background: #282725; border-color: #45433f; }
+  .chat-log { background: #242321; border-color: #45433f; }
+  .tournament-meta, .hint, .foot { color: var(--muted); }
+  .moderation-card { border-color: #45433f; }
+  .moderation-actions .danger, .social-item button.danger { color: #ffaaa5; }
+  .social-item button.danger { background: #442b2a; border-color: #68403d; }
+  .prebar { background: rgba(61,93,151,.22); border-color: rgba(102,145,220,.48); }
+  .drawbar { box-shadow: 0 5px 18px rgba(0,0,0,.3); }
   .foot { line-height: 1.6; }
   @media (max-width: 860px) { main { max-width: 720px; grid-template-columns: 1fr; } }
   @media (max-width: 520px) {

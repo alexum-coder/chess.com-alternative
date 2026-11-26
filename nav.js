@@ -7,11 +7,11 @@
   const style = document.createElement('style');
   style.textContent = `
   .zznav{position:sticky;top:0;z-index:1000;width:100%;padding:12px max(18px,calc((100vw - 1180px)/2));display:flex;align-items:center;gap:26px;
-    color:#f7f8f6;background:#26332b;box-shadow:0 2px 10px rgba(24,36,27,.15);font:700 14px Manrope,system-ui,-apple-system,"Segoe UI",sans-serif}
+    color:#f3f1ec;background:#201f1d;border-bottom:1px solid #403e3a;box-shadow:0 2px 16px rgba(0,0,0,.28);font:700 14px Manrope,system-ui,-apple-system,"Segoe UI",sans-serif}
   .zznav a{color:inherit;text-decoration:none}
   .zzbrand{font-size:1.22rem;letter-spacing:-.025em;color:#fff}
   .zznav nav{display:flex;gap:18px;align-items:center;min-width:0}
-  .zznav nav a{color:#c5d1c7;padding:5px 0;border-bottom:2px solid transparent}
+  .zznav nav a{color:#aaa7a0;padding:5px 0;border-bottom:2px solid transparent}
   .zznav nav a[aria-current="page"]{color:#fff;border-color:#9bd36c}
   .zzuser{margin-left:auto;display:flex;align-items:center;gap:10px}
   .zzwho{color:#f7f8f6;text-decoration:none}

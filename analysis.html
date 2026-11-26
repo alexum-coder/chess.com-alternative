@@ -8,17 +8,15 @@
   <link rel="stylesheet" href="/theme.css">
   <link rel="stylesheet" href="/board.css">
   <style>
-    :root { color-scheme:dark; --bg:#242321; --panel:#302f2d; --panel2:#282725; --ink:#f3f1ec; --muted:#aaa7a0; --line:#45433f; --light:#f0d9b5; --dark:#b58863; --accent:#81b64c; --last:rgba(157,190,73,.55); }
-    body { background:#242321; color:var(--ink); }
-    .analysis-shell { width:min(1540px,100%); margin:20px auto 42px; padding:0 18px; }
+    .analysis-shell { width:min(1580px,100%); margin:20px auto 42px; padding:0 18px; }
     .hint { color:var(--muted); font-size:.76rem; }
     .analysis-top { display:flex; align-items:center; justify-content:space-between; gap:14px; margin-bottom:15px; }
     .analysis-top h1 { margin:0; font-size:1.35rem; letter-spacing:-.025em; }
     .analysis-top p { margin:3px 0 0; color:var(--muted); font-size:.86rem; }
     .top-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-    .analysis-layout { display:grid; grid-template-columns:minmax(0, min(59vw, 850px)) minmax(360px, 1fr); gap:18px; align-items:start; }
+    .analysis-layout { display:grid; grid-template-columns:minmax(0, min(58vw, 860px)) minmax(360px, 1fr); gap:18px; align-items:start; }
     .board-side { min-width:0; }
-    .player-strip { display:flex; justify-content:space-between; gap:12px; align-items:center; background:#302f2d; border:1px solid #403e3a; border-radius:9px 9px 0 0; padding:10px 14px; }
+    .player-strip { display:flex; justify-content:space-between; gap:12px; align-items:center; background:#302f2d; border:1px solid #403e3a; border-radius:8px 8px 0 0; padding:10px 14px; box-shadow:0 4px 14px rgba(0,0,0,.12); }
     .player { display:flex; align-items:center; gap:10px; min-width:0; }
     .player-piece { display:grid; place-items:center; width:36px; height:36px; flex:0 0 36px; border-radius:5px; font-size:25px; background:#e8e7e2; color:#282725; }
     .player.black .player-piece { background:#55534f; color:#f5f4f0; }
@@ -29,9 +27,7 @@
     .eval-bar { position:relative; overflow:hidden; border-radius:4px; background:#171716; min-height:200px; box-shadow:inset 0 0 0 1px rgba(255,255,255,.12); }
     .eval-fill { position:absolute; left:0; right:0; bottom:0; height:50%; background:#f5f4ef; transition:height .25s ease; }
     .eval-value { position:absolute; z-index:1; left:0; right:0; bottom:5px; color:#282725; text-align:center; font-size:.58rem; font-weight:900; text-shadow:0 1px 1px rgba(255,255,255,.6); }
-    #board { width:100%; border-radius:0; box-shadow:none; }
-    .zz-board .sq.l { background:#f0d9b5; }
-    .zz-board .sq.d { background:#b58863; }
+    #board { width:100%; border-radius:8px; box-shadow:0 10px 28px rgba(0,0,0,.28); }
     .zz-board .sq i.r,.zz-board .sq i.f { text-shadow:0 1px 1px rgba(0,0,0,.12); }
     .board-meta { display:flex; justify-content:space-between; gap:10px; align-items:center; color:var(--muted); font-size:.78rem; padding:8px 2px; }
     .board-controls { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:7px; margin-top:8px; }
@@ -49,32 +45,47 @@
     .engine-row { display:flex; align-items:center; gap:8px; padding:12px 14px; border-bottom:1px solid #403e3a; }
     .engine-row select { flex:1; min-width:0; }
     .engine-state { color:var(--muted); font-size:.78rem; padding:0 14px 9px; }
-    .engine-insight { margin:12px 14px; padding:13px 14px; border-radius:9px; background:#f4f3ef; color:#22211f; display:grid; grid-template-columns:34px 1fr; gap:10px; }
-    .engine-insight .mascot { display:grid; place-items:center; width:34px; height:34px; border-radius:50%; background:#e1ead9; font-size:21px; }
+    .engine-insight { margin:12px 14px; padding:13px 14px; border:1px solid #4b4944; border-radius:9px; background:#353431; color:var(--ink); display:grid; grid-template-columns:34px 1fr; gap:10px; box-shadow:0 5px 14px rgba(0,0,0,.16); }
+    .engine-insight .mascot { display:grid; place-items:center; width:34px; height:34px; border-radius:50%; background:#3e4b36; color:#bde39b; font-size:21px; }
     .engine-insight strong { display:block; font-size:.9rem; margin-bottom:3px; }
     .engine-insight p { margin:0; font-size:.82rem; line-height:1.45; }
-    .engine-insight .score { display:inline-block; margin-top:6px; color:#55534f; font-size:.75rem; font-weight:800; }
+    .engine-insight .score { display:inline-block; margin-top:6px; color:#c4c0b7; font-size:.75rem; font-weight:800; }
     .move-detail { margin:0 14px 12px; padding:12px 13px; border:1px solid #484641; border-radius:8px; background:#32312e; min-height:104px; }
     .move-detail-head { display:flex; align-items:center; gap:8px; margin-bottom:7px; }
     .move-detail-head strong { font-size:.95rem; }
     .move-detail p { margin:5px 0 0; font-size:.83rem; line-height:1.45; color:#e1dfd9; }
     .move-detail .muted { color:var(--muted); font-size:.76rem; }
-    .review-icon { display:inline-grid; place-items:center; width:24px; height:24px; flex:0 0 24px; border-radius:50%; font-size:.77rem; font-weight:900; background:#e9eee8; color:#60745c; }
-    .mark-brilliant .review-icon { background:#dff5fb; color:#087e9c; }
-    .mark-best .review-icon,.mark-great .review-icon { background:#e3f2df; color:#28743a; }
-    .mark-excellent .review-icon { background:#e7f0e3; color:#477b3e; }
-    .mark-inaccuracy .review-icon { background:#fff2d9; color:#9a6500; }
-    .mark-mistake .review-icon { background:#ffe8d8; color:#b45a18; }
-    .mark-blunder .review-icon,.mark-missed-win .review-icon { background:#fbe1e1; color:#b3261e; }
-    .mark-checkmate .review-icon { background:#e8e1f8; color:#6841a5; }
+    .book-panel { margin:0 14px 12px; padding:12px 13px; border:1px solid #465345; border-radius:8px; background:linear-gradient(135deg,#30372e,#30302d); }
+    .book-panel[hidden] { display:none; }
+    .book-panel-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:7px; }
+    .book-panel-head strong { font-size:.86rem; }
+    .book-panel-head span { color:#b5d39d; font-size:.7rem; font-weight:800; text-transform:uppercase; letter-spacing:.06em; }
+    .book-intro { margin:0 0 9px; color:#c4c5bb; font-size:.76rem; line-height:1.4; }
+    .book-options { display:grid; gap:6px; }
+    .book-option { display:grid; grid-template-columns:54px minmax(0,1fr); gap:9px; align-items:start; padding:8px 9px; border-radius:6px; background:#252923; border:1px solid #414a3e; }
+    .book-option-move { color:#d7edc7; font-weight:900; font-size:.95rem; }
+    .book-option-names { color:#e7e4dc; font-size:.76rem; font-weight:800; }
+    .book-option-line { display:block; margin-top:3px; color:#aeb2a5; font-size:.7rem; line-height:1.4; }
+    .book-tags { display:flex; flex-wrap:wrap; gap:5px; margin-top:7px; }
+    .book-tag { padding:3px 6px; border-radius:4px; background:#3b4836; color:#c9e6b4; font-size:.68rem; font-weight:800; }
+    .review-icon { display:inline-grid; place-items:center; width:24px; height:24px; flex:0 0 24px; border-radius:50%; font-size:.77rem; font-weight:900; background:#41403b; color:#d7d4cc; }
+    .mark-book .review-icon { background:#34424a; color:#b7d6e8; }
+    .mark-brilliant .review-icon { background:#21424a; color:#8be0ec; }
+    .mark-best .review-icon,.mark-great .review-icon { background:#304a31; color:#b7e0aa; }
+    .mark-excellent .review-icon { background:#344632; color:#b8dba9; }
+    .mark-good .review-icon { background:#3e463b; color:#c8d2c0; }
+    .mark-inaccuracy .review-icon { background:#57472b; color:#ffd28b; }
+    .mark-mistake .review-icon { background:#593b2c; color:#ffbd91; }
+    .mark-blunder .review-icon,.mark-missed-win .review-icon { background:#572f30; color:#ffaaa5; }
+    .mark-checkmate .review-icon { background:#413750; color:#d0b9ff; }
     .moves-area { padding:0 14px 12px; }
     .moves-title { display:flex; justify-content:space-between; align-items:center; gap:8px; margin:0 0 8px; }
     .moves-title h3 { margin:0; font-size:.89rem; }
-    .moves-grid { display:grid; gap:3px; max-height:270px; overflow:auto; padding-right:4px; }
+    .moves-grid { display:grid; gap:3px; max-height:330px; overflow:auto; padding:2px 4px 4px 0; scrollbar-color:#5b5852 #2b2a28; }
     .move-row { display:grid; grid-template-columns:34px minmax(0,1fr) minmax(0,1fr); align-items:center; gap:5px; }
     .move-number { color:#929089; font-size:.74rem; text-align:right; padding-right:3px; }
     .move-cell { display:flex; align-items:center; gap:5px; min-width:0; padding:6px 7px; border:1px solid transparent; border-radius:5px; background:transparent; font-size:.8rem; font-weight:800; text-align:left; }
-    .move-cell.selected { background:#4b4a45; border-color:#77746b; }
+    .move-cell.selected { background:#4b4a45; border-color:#8a877f; box-shadow:inset 3px 0 #81b64c; }
     .move-cell .notation { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .move-cell .mini-mark { flex:0 0 15px; font-size:.7rem; text-align:center; }
     .move-cell.mark-inaccuracy,.move-cell.mark-mistake { color:#ffc16e; }
@@ -84,7 +95,8 @@
     .evaluation-head { display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:.78rem; color:var(--muted); margin-bottom:8px; }
     #evalGraph { width:100%; height:96px; display:block; border-radius:5px; background:#3a3936; cursor:crosshair; }
     .summary { display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
-    .summary-pill { padding:4px 7px; background:#3a3936; border:1px solid #504e49; border-radius:5px; color:#ddd9d1; font-size:.69rem; font-weight:800; }
+    .summary-pill { padding:5px 8px; background:#373633; border:1px solid #504e49; border-radius:6px; color:#ddd9d1; font-size:.7rem; font-weight:800; }
+    .summary-pill.accuracy-pill { background:#354331; border-color:#506a45; color:#d7e8cb; }
     .page-error { padding:28px; color:#ffaaa5; }
     .loading { color:var(--muted); padding:24px 0; }
     @media(max-width:900px) { .analysis-layout { grid-template-columns:minmax(0,1fr); } .board-side { max-width:760px; margin:0 auto; width:100%; } .right-panel { width:100%; } }
@@ -127,7 +139,7 @@
         <div class="panel-head"><div><div class="eyebrow">Completed game</div><h2>Game review</h2></div><span id="resultText" class="game-result">—</span></div>
         <div class="engine-row">
           <label for="depth">Stockfish depth</label>
-          <select id="depth"><option value="10">10 · Fast</option><option value="12" selected>12 · Balanced</option><option value="14">14 · Detailed</option><option value="16">16 · Deep</option></select>
+          <select id="depth"><option value="10">10 · Fast</option><option value="12">12 · Fast</option><option value="14" selected>14 · Balanced</option><option value="16">16 · Detailed</option><option value="18">18 · Deep</option></select>
           <button id="runReview" class="primary" disabled>Start analysis</button>
         </div>
         <div class="engine-state" id="engineState">Connecting to Stockfish…</div>
@@ -139,8 +151,14 @@
           <div class="move-detail-head"><span class="review-icon">·</span><strong>Game moves</strong></div>
           <p>After analysis, select any move to see why the engine liked it or found a better option.</p>
         </section>
+        <section class="book-panel" id="bookPanel" hidden aria-live="polite">
+          <div class="book-panel-head"><strong>Opening book possibilities</strong><span>Curated theory</span></div>
+          <p class="book-intro" id="bookIntro"></p>
+          <div class="book-options" id="bookOptions"></div>
+          <div class="book-tags" id="bookTags"></div>
+        </section>
         <div class="moves-area">
-          <div class="moves-title"><h3>Move list</h3><span id="moveCount" class="hint">Not analysed</span></div>
+          <div class="moves-title"><h3>Move list</h3><span id="moveCount" class="hint">Moves</span></div>
           <div id="movesGrid" class="moves-grid"><p class="hint">Moves will appear here.</p></div>
           <div id="summary" class="summary" hidden></div>
         </div>
@@ -158,17 +176,19 @@
   <script type="module">
     import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.0.0/+esm';
     import { ZugzwangBoard } from '/board.js';
+    import { parseUciInfoLine, getBookOpenings, getBookOptions, calculateMoveLoss, calculateExpectedPointsLoss, formatExpectedPointsLoss, classifyMoveQuality, explainMoveQuality, formatWhiteEvaluation } from '/review-scoring.mjs';
     const $ = (id) => document.getElementById(id);
     const params = new URLSearchParams(location.search);
     const gameId = params.get('id');
     const STANDARD_FEN = new Chess().fen();
-    let record = null, worker = null, ready = false, busy = false, failed = false, running = false;
-    let rows = [], positions = [], evaluations = [], selectedPly = 0, flipped = false, playTimer = null;
+    let record = null, worker = null, ready = false, busy = false, failed = false, running = false, autoStartPending = false;
+    let rows = [], positions = [], evaluations = [], selectedPly = 0, flipped = false, playTimer = null, bookEligible = true;
     const board = new ZugzwangBoard($('board'));
 
     function setEngineState(text) { $('engineState').textContent = text; }
     function updateControls() {
       $('runReview').disabled = !record || !ready || running || failed || busy;
+      $('runReview').textContent = running ? 'Analysing…' : (evaluations.length ? 'Reanalyse' : 'Start analysis');
       $('depth').disabled = running || busy;
       $('firstMove').disabled = !positions.length || selectedPly === 0;
       $('prevMove').disabled = !positions.length || selectedPly === 0;
@@ -185,11 +205,17 @@
             setEngineState('Stockfish could not load: ' + line.slice('stockfish-bootstrap-error:'.length).trim());
             updateControls(); return;
           }
-          if (line === 'uciok') worker.postMessage('isready');
+          if (line === 'uciok') {
+            worker.postMessage('setoption name UCI_AnalyseMode value true');
+            worker.postMessage('setoption name MultiPV value 1');
+            worker.postMessage('setoption name UCI_ShowWDL value true');
+            worker.postMessage('isready');
+          }
           if (line === 'readyok') {
             ready = true;
-            setEngineState('Stockfish ready · browser-based analysis');
+            setEngineState(autoStartPending ? 'Stockfish ready · starting automatic game analysis…' : 'Stockfish ready · browser-based analysis');
             updateControls();
+            maybeAutoStartAnalysis();
           }
         };
         worker.onerror = (event) => {
@@ -204,17 +230,10 @@
         updateControls();
       }
     }
-    function scoreToWhitePawns(score, fen) {
-      if (!score) return null;
-      let value = score.type === 'mate'
-        ? Math.sign(score.value || 1) * (50 - Math.min(50, Math.abs(score.value)) * 0.01)
-        : score.value / 100;
-      return fen.split(' ')[1] === 'w' ? value : -value;
-    }
     function evaluateFen(fen, depth) {
       return new Promise((resolve, reject) => {
         if (!worker || !ready || busy) return reject(new Error('Stockfish is busy or not ready.'));
-        let bestScore = null, bestDepth = -1, pv = [], settled = false;
+        let bestInfo = null, bestDepth = -1, settled = false;
         const timeout = setTimeout(() => {
           try { worker.postMessage('stop'); } catch {}
           finishError(new Error('Stockfish took too long on this position. Try a lower depth.'));
@@ -231,26 +250,23 @@
         const onMessage = (event) => {
           const text = String(event.data);
           if (text.startsWith('info ')) {
-            const scoreMatch = text.match(/\bscore\s+(cp|mate)\s+(-?\d+)/);
-            const depthMatch = text.match(/\bdepth\s+(\d+)/);
-            const currentDepth = depthMatch ? Number(depthMatch[1]) : 0;
-            if (scoreMatch && currentDepth >= bestDepth) {
-              bestDepth = currentDepth;
-              bestScore = { type:scoreMatch[1], value:Number(scoreMatch[2]), depth:currentDepth };
-              const pvMatch = text.match(/\bpv\s+(.+)$/);
-              pv = pvMatch ? pvMatch[1].trim().split(/\s+/) : [];
+            const info = parseUciInfoLine(text, fen.split(/\s+/)[1]);
+            if (info && info.depth >= bestDepth) {
+              bestDepth = info.depth;
+              bestInfo = info;
             }
           }
           const bestMatch = text.match(/^bestmove\s+(\S+)/);
           if (bestMatch) {
-            if (!bestScore) return finish(null);
-            finish({ whiteScore:scoreToWhitePawns(bestScore, fen), score:bestScore, bestMove:bestMatch[1], pv, depth:bestDepth });
+            if (!bestInfo) return finish(null);
+            finish({ ...bestInfo, bestMove:bestMatch[1], depth:bestDepth });
           }
         };
         busy = true; updateControls();
         worker.addEventListener('message', onMessage);
         worker.addEventListener('error', onError);
         try {
+          worker.postMessage('ucinewgame');
           worker.postMessage('position fen ' + fen);
           worker.postMessage('go depth ' + depth);
         } catch (error) { finishError(error); }
@@ -277,51 +293,41 @@
         return san.join(' ');
       } catch { return ''; }
     }
-    function isSoundMaterialSacrifice(row) {
+    function isSoundMaterialSacrifice(row, after) {
+      // A sacrifice is only considered brilliant when a valuable piece is en prise,
+      // but the opponent's best engine reply declines taking it.
       if (!['n','b','r','q'].includes(row.move.piece)) return false;
       try {
         const afterMove = new Chess(row.after);
-        const captures = afterMove.moves({ verbose:true }).filter((candidate) => candidate.to === row.move.to && candidate.captured);
-        for (const capture of captures) {
-          const afterCapture = new Chess(row.after);
-          afterCapture.move({ from:capture.from, to:capture.to, ...(capture.promotion ? { promotion:capture.promotion } : {}) });
-          const canRecapture = afterCapture.moves({ verbose:true }).some((reply) => reply.to === row.move.to && reply.captured);
-          if (!canRecapture) return true;
-        }
-      } catch { /* Conservative when the sacrifice cannot be verified. */ }
-      return false;
+        const canTakeOfferedPiece = afterMove.moves({ verbose:true })
+          .some((candidate) => candidate.to === row.move.to && candidate.captured);
+        if (!canTakeOfferedPiece) return false;
+        const reply = moveFromUci(row.after, after?.bestMove);
+        return Boolean(reply && !(reply.to === row.move.to && reply.captured));
+      } catch { return false; }
     }
-    function classifyMove(row, before, after, loss) {
-      if (row.checkmate) return { key:'checkmate', icon:'♔', name:'Checkmate' };
-      const bestMatch = before.bestMove === row.uci;
-      const moverBefore = row.color === 'w' ? before.whiteScore : -before.whiteScore;
-      const moverAfter = row.color === 'w' ? after.whiteScore : -after.whiteScore;
-      if (moverBefore >= 3 && moverAfter <= 1.5) return { key:'missed-win', icon:'??', name:'Missed win' };
-      if (bestMatch && loss <= 0.15 && isSoundMaterialSacrifice(row)) return { key:'brilliant', icon:'!!', name:'Brilliant' };
-      if (bestMatch && loss <= 0.12) return { key:'best', icon:'✓', name:'Best' };
-      if (loss <= 0.08) return { key:'great', icon:'!', name:'Great' };
-      if (loss <= 0.18) return { key:'excellent', icon:'★', name:'Excellent' };
-      if (loss <= 0.35) return { key:'good', icon:'○', name:'Good' };
-      if (loss <= 0.75) return { key:'inaccuracy', icon:'?!', name:'Inaccuracy' };
-      if (loss <= 1.5) return { key:'mistake', icon:'?', name:'Mistake' };
-      return { key:'blunder', icon:'??', name:'Blunder' };
+    function classifyMove(row, before, after, expectedLoss) {
+      return classifyMoveQuality({ row, before, after, loss:expectedLoss, soundSacrifice:isSoundMaterialSacrifice(row,after) });
     }
-    function explanation(label, loss, bestSan, replySan, row) {
-      if (label.key === 'checkmate') return `${row.san} ends the game with checkmate.`;
-      if (label.key === 'brilliant') return 'A sound material sacrifice: Stockfish ranks this move first and the offered piece cannot simply be won without compensation.';
-      if (label.key === 'best') return `Matches Stockfish’s top choice and keeps the evaluation essentially unchanged${replySan ? `. The engine expects ${replySan} in reply` : ''}.`;
-      if (label.key === 'great') return `A very strong move, close to the engine’s preferred continuation${bestSan ? ` (${bestSan})` : ''}${replySan ? `. The engine expects ${replySan} in reply` : ''}.`;
-      if (label.key === 'excellent') return `A strong move that gives up only a small amount of the position’s evaluation${replySan ? `. The engine’s strongest reply is ${replySan}` : ''}.`;
-      if (label.key === 'good') return `A playable move that keeps the position healthy, although a slightly stronger continuation was available${replySan ? `. Watch for ${replySan}` : ''}.`;
-      const alternative = bestSan ? ` Stockfish preferred ${bestSan}.` : '';
-      const reply = replySan ? ` The strongest reply is ${replySan}.` : '';
-      if (label.key === 'inaccuracy') return `This slightly weakens the position and gives up about ${loss.toFixed(2)} pawns of evaluation.${alternative}${reply}`;
-      if (label.key === 'mistake') return `A significant error, losing about ${loss.toFixed(2)} pawns of evaluation.${alternative}${reply}`;
-      if (label.key === 'missed-win') return `The position was winning, but this move lets much of that advantage slip away.${alternative}${reply}`;
-      return `A major error that loses about ${loss.toFixed(2)} pawns of evaluation and gives the opponent a strong opportunity.${alternative}${reply}`;
+    function moveFromUci(fen, uci) {
+      if (!uci || uci === '0000') return null;
+      try {
+        const position = new Chess(fen);
+        return position.move({ from:uci.slice(0,2), to:uci.slice(2,4), ...(uci[4] ? { promotion:uci[4] } : {}) });
+      } catch { return null; }
+    }
+    function explanation(label, expectedLoss, rawPawnsLoss, bestSan, bestLineSan, replySan, row, after) {
+      const replyMove = moveFromUci(row.after, after.bestMove);
+      const replyCapturesMovedPiece = Boolean(replyMove?.captured && replyMove.to === row.move.to);
+      let replyTacticalText = '';
+      if (replyMove?.san?.includes('#')) replyTacticalText = `The opponent's best reply ${replySan} is checkmate.`;
+      else if (replyCapturesMovedPiece) replyTacticalText = `The opponent's best reply ${replySan} captures your ${row.move.piece === 'p' ? 'pawn' : ({n:'knight',b:'bishop',r:'rook',q:'queen',k:'king'})[row.move.piece] || 'piece'}.`;
+      else if (replyMove?.captured) replyTacticalText = `The opponent's best reply ${replySan} wins your ${({p:'pawn',n:'knight',b:'bishop',r:'rook',q:'queen',k:'king'})[replyMove.captured] || 'piece'}.`;
+      else if (replyMove?.san?.includes('+')) replyTacticalText = `The opponent's best reply ${replySan} comes with check.`;
+      return explainMoveQuality({ row, label, loss:expectedLoss, rawPawnsLoss, bestSan, bestLineSan, replySan, after, replyCapturesMovedPiece, replyTacticalText });
     }
     function iconFor(key) {
-      return ({ brilliant:'!!',best:'✓',great:'!',excellent:'★',good:'○',inaccuracy:'?!',mistake:'?',blunder:'??','missed-win':'??',checkmate:'♔' })[key] || '·';
+      return ({ book:'▤',brilliant:'!!',best:'✓',great:'!',excellent:'★',good:'○',inaccuracy:'?!',mistake:'?',blunder:'??','missed-win':'??',checkmate:'♔' })[key] || '·';
     }
     function parseGamePgn(game) {
       const parsed = new Chess();
@@ -333,16 +339,23 @@
       const nextRows = [], fens = [replay.fen()];
       for (let i = 0; i < history.length; i++) {
         const move = history[i];
+        const legalMoveCount = replay.moves().length;
         const applied = replay.move({ from:move.from, to:move.to, ...(move.promotion ? { promotion:move.promotion } : {}) });
         if (!applied) throw new Error(`The saved PGN has an invalid move at ply ${i + 1}.`);
         nextRows.push({
-          ply:i + 1, moveNumber:Math.ceil((i + 1) / 2), san:applied.san, move:applied, color:applied.color,
+          ply:i + 1, moveNumber:Math.ceil((i + 1) / 2), san:applied.san, move:applied, color:applied.color, legalMoveCount,
           uci:applied.from + applied.to + (applied.promotion || ''), before:fens[i], after:replay.fen(),
           checkmate:replay.isCheckmate(), draw:replay.isDraw() && !replay.isCheckmate()
         });
         fens.push(replay.fen());
       }
-      return { rows:nextRows, positions:fens, final:replay };
+      const bookEligible = startFen === STANDARD_FEN;
+      const playedUci = nextRows.map(row => row.uci);
+      nextRows.forEach((row, index) => {
+        row.bookOpenings = bookEligible ? getBookOpenings(playedUci.slice(0, index + 1)) : [];
+        row.book = row.bookOpenings.length > 0;
+      });
+      return { rows:nextRows, positions:fens, final:replay, bookEligible };
     }
     function displayResult(result) {
       return result === '1-0' ? 'White wins' : result === '0-1' ? 'Black wins' : result === '1/2-1/2' ? 'Draw' : 'Completed';
@@ -357,11 +370,11 @@
       $('timeControl').textContent = game.source === 'computer' ? 'vs Stockfish' : `${Math.round((game.base || 0) / 60)}+${game.inc || 0}`;
       $('gameMeta').textContent = `${new Date(game.created_at).toLocaleString()} · ${game.reason || 'Game completed'}`;
       const parsed = parseGamePgn(game);
-      rows = parsed.rows; positions = parsed.positions;
+      rows = parsed.rows; positions = parsed.positions; bookEligible = parsed.bookEligible;
       $('moveCount').textContent = `${rows.length} plies`;
       $('analysisApp').hidden = false; $('loading').hidden = true;
       renderMoveList();
-      setPly(rows.length);
+      setPly(0);
       updateControls();
       if (!rows.length) {
         $('moveCount').textContent = 'No moves played';
@@ -378,16 +391,52 @@
       $('positionLabel').textContent = move ? `After ${move.moveNumber}${move.color === 'w' ? '.' : '…'} ${move.san}` : 'Starting position';
       $('turnLabel').textContent = position.isGameOver() ? (position.isCheckmate() ? 'Checkmate' : 'Game over') : `${position.turn() === 'w' ? 'White' : 'Black'} to move${position.isCheck() ? ' · Check' : ''}`;
       if (evaluations.length) {
-        const value = evaluations[selectedPly]?.whiteScore ?? 0;
+        const currentEvaluation = evaluations[selectedPly];
+        const value = currentEvaluation?.whiteScore ?? 0;
         const clamped = Math.max(-6, Math.min(6, value));
         $('evalFill').style.height = `${((clamped + 6) / 12) * 100}%`;
-        $('evalValue').textContent = `${value > 0 ? '+' : ''}${value.toFixed(1)}`;
+        $('evalValue').textContent = position.isCheckmate() ? (position.turn() === 'w' ? '−M0' : 'M0') : formatWhiteEvaluation(currentEvaluation);
         renderEvalGraph(evaluations);
       }
       document.querySelectorAll('.move-cell').forEach((el) => el.classList.toggle('selected', Number(el.dataset.ply) === selectedPly));
       renderMoveDetail(move);
+      renderBookPanel();
       updateControls();
     }
+    function renderBookPanel() {
+      const panel = $('bookPanel');
+      const intro = $('bookIntro');
+      const optionsContainer = $('bookOptions');
+      const tags = $('bookTags');
+      optionsContainer.replaceChildren(); tags.replaceChildren();
+      if (!bookEligible) { panel.hidden = true; return; }
+      const prefix = rows.slice(0, selectedPly).map(row => row.uci);
+      const openings = getBookOpenings(prefix);
+      const options = getBookOptions(prefix);
+      if (!openings.length && !options.length) { panel.hidden = true; return; }
+      panel.hidden = false;
+      intro.textContent = openings.length
+        ? `This position is still in the recognised ${openings.slice(0, 2).join(' / ')} repertoire. These are the next moves covered by Zugzwang’s opening guide.`
+        : 'Known opening continuations from the starting position.';
+      const fen = positions[selectedPly] || STANDARD_FEN;
+      for (const option of options.slice(0, 8)) {
+        const san = uciToSan(fen, option.uci);
+        if (!san) continue;
+        const card = document.createElement('div'); card.className = 'book-option';
+        const move = document.createElement('strong'); move.className = 'book-option-move'; move.textContent = san;
+        const details = document.createElement('div');
+        const names = document.createElement('div'); names.className = 'book-option-names';
+        names.textContent = option.openings.slice(0, 3).join(' · ') + (option.openings.length > 3 ? ` · +${option.openings.length - 3}` : '');
+        const line = document.createElement('small'); line.className = 'book-option-line';
+        const representative = option.continuations.find(candidate => candidate.length) || [option.uci];
+        line.textContent = `Book line: ${uciLineToSan(fen, representative) || san}`;
+        details.append(names, line); card.append(move, details); optionsContainer.append(card);
+      }
+      for (const name of openings.slice(0, 5)) {
+        const tag = document.createElement('span'); tag.className = 'book-tag'; tag.textContent = name; tags.append(tag);
+      }
+    }
+
     function renderMoveList() {
       const container = $('movesGrid');
       container.replaceChildren();
@@ -402,6 +451,11 @@
           const mark = document.createElement('span'); mark.className = 'mini-mark'; mark.textContent = '·';
           const san = document.createElement('span'); san.className = 'notation'; san.textContent = row.san;
           btn.append(mark, san);
+          if (row.book) {
+            btn.classList.add('mark-book');
+            mark.textContent = '▤';
+            btn.title = `Book move · ${row.bookOpenings.slice(0, 3).join(', ')}`;
+          }
           btn.addEventListener('click', () => setPly(row.ply));
           line.append(btn);
           row.moveButton = btn; row.markNode = mark;
@@ -420,7 +474,7 @@
         insightTitle.textContent = `${row.san} · ${row.label.name}`;
         insightText.textContent = row.explanation;
         const score = document.createElement('span'); score.className = 'score';
-        score.textContent = row.label.key === 'checkmate' ? 'MATE' : `Evaluation loss −${row.loss.toFixed(2)}`;
+        score.textContent = row.label.key === 'checkmate' ? 'CHECKMATE' : `Position: ${row.evalText || '—'} · Expected-score loss: ${formatExpectedPointsLoss(row.loss ?? row.expectedLoss)}`;
         insightBody.append(insightTitle, insightText, score);
       } else {
         mascot.textContent = '♟';
@@ -455,7 +509,8 @@
         const reply = document.createElement('p'); alternativeClass(reply); reply.textContent = `Engine’s strongest reply: ${row.replySan}`; detail.append(reply);
       }
       if (Number.isFinite(row.loss)) {
-        const score = document.createElement('p'); score.className = 'muted'; score.textContent = `Evaluation loss: ${row.loss.toFixed(2)} pawns`; detail.append(score);
+        const score = document.createElement('p'); score.className = 'muted'; const rawPart = Number.isFinite(row.rawLoss) ? ` · Raw evaluation swing: ${row.rawLoss.toFixed(2)} pawns` : '';
+        score.textContent = `Position: ${row.evalText || '—'} (White’s perspective) · Expected-score loss: ${formatExpectedPointsLoss(row.loss ?? row.expectedLoss)}${rawPart}`; detail.append(score);
       }
       function alternativeClass(element) { element.className = 'muted'; }
     }
@@ -463,11 +518,25 @@
       const counts = new Map();
       for (const row of rows) counts.set(row.label?.key, (counts.get(row.label?.key) || 0) + 1);
       const summary = $('summary'); summary.replaceChildren();
-      const order = ['brilliant','best','great','excellent','good','inaccuracy','mistake','blunder','missed-win','checkmate'];
+      const accuracyFor = (color) => {
+        const own = rows.filter((row) => row.color === color && Number.isFinite(row.loss));
+        if (!own.length) return null;
+        const average = own.reduce((sum,row) => sum + (Number.isFinite(row.expectedLoss) ? row.expectedLoss : row.loss), 0) / own.length;
+        return Math.round(100 * Math.exp(-5 * average));
+      };
+      for (const [color,name] of [['w','White'],['b','Black']]) {
+        const accuracy = accuracyFor(color);
+        if (accuracy == null) continue;
+        const pill = document.createElement('span'); pill.className = 'summary-pill accuracy-pill';
+        pill.textContent = `${name} accuracy estimate ${accuracy}%`;
+        pill.title = 'Zugzwang estimate based on expected-score loss; not Chess.com’s proprietary accuracy formula.';
+        summary.append(pill);
+      }
+      const order = ['book','brilliant','best','great','excellent','good','inaccuracy','mistake','blunder','missed-win','checkmate'];
       for (const key of order) {
         const count = counts.get(key) || 0; if (!count) continue;
         const pill = document.createElement('span'); pill.className = 'summary-pill';
-        const names = { brilliant:'Brilliant',best:'Best',great:'Great',excellent:'Excellent',good:'Good',inaccuracy:'Inaccuracy',mistake:'Mistake',blunder:'Blunder','missed-win':'Missed win',checkmate:'Checkmate' };
+        const names = { book:'Book',brilliant:'Brilliant',best:'Best',great:'Great',excellent:'Excellent',good:'Good',inaccuracy:'Inaccuracy',mistake:'Mistake',blunder:'Blunder','missed-win':'Missed win',checkmate:'Checkmate' };
         pill.textContent = `${iconFor(key)} ${names[key]} ${count}`; summary.append(pill);
       }
       summary.hidden = !summary.childElementCount;
@@ -493,6 +562,13 @@
         }
       });
     }
+    function maybeAutoStartAnalysis() {
+      if (!autoStartPending || !ready || !record || running || failed || busy) return;
+      autoStartPending = false;
+      setEngineState('Stockfish ready · automatically analysing this completed game…');
+      void runAnalysis();
+    }
+
     async function runAnalysis() {
       if (!record || !ready || running || busy) return;
       if (!rows.length) {
@@ -508,12 +584,12 @@
         return;
       }
       running = true; updateControls(); $('summary').hidden = true;
-      const depth = Math.max(10,Math.min(16,Number($('depth').value)||12));
+      const depth = Math.max(10,Math.min(18,Number($('depth').value)||14));
       const nextEvaluations = [];
       const finalPosition = new Chess(positions[positions.length-1]);
       const finalRow = rows[rows.length-1];
       $('engineInsight').querySelector('strong').textContent = 'Analysing game…';
-      $('engineInsight').querySelector('p').textContent = 'Stockfish is checking every position and comparing the played move with its best continuation.';
+      $('engineInsight').querySelector('p').textContent = 'Stockfish is checking each position, comparing the played move with its best line, and grading the change in expected win/draw/loss result.';
       try {
         for (let i=0;i<positions.length;i++) {
           setEngineState(`Analysing position ${i+1} of ${positions.length} · depth ${depth}`);
@@ -528,14 +604,23 @@
         evaluations = nextEvaluations;
         for (const row of rows) {
           const before = evaluations[row.ply-1], after = evaluations[row.ply];
-          const rawLoss = row.color==='w' ? before.whiteScore-after.whiteScore : after.whiteScore-before.whiteScore;
-          const loss = Math.max(0,rawLoss);
+          const rawPawnsLoss = row.checkmate || before.score?.type === 'mate' || after.score?.type === 'mate' ? null : calculateMoveLoss(before, after, row.color);
+          const expectedLoss = calculateExpectedPointsLoss(before, after, row.color);
+          if ((!row.checkmate && before.score?.type !== 'mate' && after.score?.type !== 'mate' && rawPawnsLoss == null) || expectedLoss == null) throw new Error(`Stockfish returned an invalid score for move ${row.ply}.`);
           const bestSan = uciToSan(row.before,before.bestMove);
           const replySan = uciToSan(row.after,after.bestMove);
-          row.loss = loss; row.bestSan = bestSan; row.replySan = replySan;
+          row.bestSan = bestSan; row.replySan = replySan;
           row.bestLineSan = uciLineToSan(row.before,before.pv);
-          row.label = classifyMove(row,before,after,loss);
-          row.explanation = explanation(row.label,loss,bestSan,replySan,row);
+          row.label = classifyMove(row,before,after,expectedLoss);
+          row.rawLoss = rawPawnsLoss;
+          row.expectedLoss = expectedLoss;
+          row.loss = row.label.effectiveLoss ?? expectedLoss;
+          row.whiteEvalAfter = after.whiteScore;
+          row.explanation = explanation(row.label,expectedLoss,rawPawnsLoss,bestSan,row.bestLineSan,replySan,row,after);
+          row.evalText = row.checkmate ? (row.color === 'w' ? 'M0' : '−M0') : formatWhiteEvaluation(after);
+          for (const key of ['book','brilliant','best','great','excellent','good','inaccuracy','mistake','blunder','missed-win','checkmate']) {
+            row.moveButton.classList.remove('mark-' + key);
+          }
           row.moveButton.classList.add('mark-' + row.label.key);
           row.markNode.textContent = row.label.icon;
           row.moveButton.title = `${row.label.name}: ${row.explanation}${row.bestLineSan ? ` Engine line: ${row.bestLineSan}` : ''}`;
@@ -544,9 +629,9 @@
         renderSummary();
         renderEvalGraph(evaluations);
         $('engineInsight').querySelector('strong').textContent = 'Analysis complete';
-        $('engineInsight').querySelector('p').textContent = `${rows.length} half-moves reviewed. Select any move to inspect the board, engine classification and recommended continuation.`;
+        $('engineInsight').querySelector('p').textContent = `${rows.length} half-moves reviewed. Select a move to see the position, why it was graded, and the engine’s alternative line.`;
         setEngineState(`Review complete · Stockfish depth ${depth}`);
-        setPly(rows.length);
+        setPly(selectedPly);
       } catch (error) {
         setEngineState(error.message || 'The game could not be analysed.');
         $('engineInsight').querySelector('strong').textContent = 'Analysis incomplete';
@@ -601,8 +686,14 @@
       stopPlayback(); setPly(Math.round(fraction*(evaluations.length-1)));
     });
 
-    try { await loadGame(); }
-    catch (error) { $('loading').className='page-error'; $('loading').textContent=error.message; }
+    try {
+      await loadGame();
+      autoStartPending = true;
+      $('engineInsight').querySelector('strong').textContent = 'Preparing automatic analysis…';
+      $('engineInsight').querySelector('p').textContent = 'The game will be analysed automatically as soon as Stockfish is ready. You can browse the moves while it runs.';
+    } catch (error) {
+      $('loading').className='page-error'; $('loading').textContent=error.message;
+    }
     initEngine();
     updateControls();
   </script>

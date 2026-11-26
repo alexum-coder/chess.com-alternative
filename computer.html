@@ -15,7 +15,7 @@
     .primary { background:var(--accent)!important; border-color:var(--accent)!important; color:#172014!important; font-weight:800; }
     .status { color:var(--muted); min-height:1.5em; }
     .moves { max-height:230px; overflow:auto; line-height:1.9; }
-    .tag { display:inline-block; margin-left:7px; padding:0 6px; border-radius:5px; background:#edf4e8; color:#456c2f; font-weight:800; }
+    .tag { display:inline-block; margin-left:7px; padding:0 6px; border-radius:5px; background:#3b4a34; color:#c5e2ab; font-weight:800; }
     .eval { font-size:1.5rem; font-weight:800; }
     .hint { color:var(--muted); font-size:.88rem; }
     .review-summary { display:flex; flex-wrap:wrap; align-items:center; gap:7px; margin:12px 0 14px; }
@@ -32,14 +32,14 @@
     .review-loss { color:var(--muted); font-size:.78rem; font-variant-numeric:tabular-nums; white-space:nowrap; }
     .review-explanation { margin:0; padding:0 12px 8px 55px; color:var(--ink); font-size:.84rem; line-height:1.45; }
     .review-alternative { margin:0; padding:0 12px 11px 55px; color:var(--muted); font-size:.78rem; line-height:1.4; }
-    .review-card-brilliant .review-icon { background:#dff5fb; color:#087e9c; }
-    .review-card-best .review-icon, .review-card-great .review-icon { background:#e3f2df; color:#28743a; }
-    .review-card-excellent .review-icon { background:#e7f0e3; color:#477b3e; }
-    .review-card-good .review-icon { background:#e9eee8; color:#60745c; }
-    .review-card-inaccuracy .review-icon { background:#fff2d9; color:#9a6500; }
-    .review-card-mistake .review-icon { background:#ffe8d8; color:#b45a18; }
-    .review-card-blunder .review-icon, .review-card-missed-win .review-icon { background:#fbe1e1; color:#b3261e; }
-    .review-card-checkmate .review-icon { background:#e8e1f8; color:#6841a5; }
+    .review-card-brilliant .review-icon { background:#21424a; color:#8be0ec; }
+    .review-card-best .review-icon, .review-card-great .review-icon { background:#304a31; color:#b7e0aa; }
+    .review-card-excellent .review-icon { background:#344632; color:#b8dba9; }
+    .review-card-good .review-icon { background:#3e463b; color:#c8d2c0; }
+    .review-card-inaccuracy .review-icon { background:#57472b; color:#ffd28b; }
+    .review-card-mistake .review-icon { background:#593b2c; color:#ffbd91; }
+    .review-card-blunder .review-icon, .review-card-missed-win .review-icon { background:#572f30; color:#ffaaa5; }
+    .review-card-checkmate .review-icon { background:#413750; color:#d0b9ff; }
     .review-placeholder { color:var(--muted); font-size:.88rem; padding:10px 0; }
     #return-position { margin-top:8px; }
     @media(max-width:780px){ main { grid-template-columns:1fr; margin:14px auto; padding:0 12px 36px; gap:12px; } .panel { padding:14px; } }
@@ -80,6 +80,7 @@
   <script type="module">
     import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.0.0/+esm';
     import { ZugzwangBoard } from '/board.js';
+    import { parseUciInfoLine, classifyMoveQuality, explainMoveQuality } from '/review-scoring.mjs';
     const $ = (id) => document.getElementById(id);
     let chess = new Chess(), selected = null, targets = [], lastMove = [], worker = null;
     let ready = false, busy = false, lastEval = null, bestMove = null;
@@ -122,7 +123,11 @@
         $('best').textContent = 'Check the public bucket, object names and Storage CORS response.';
         return;
       }
-      if (line === 'uciok') worker.postMessage('isready');
+      if (line === 'uciok') {
+        worker.postMessage('setoption name UCI_AnalyseMode value true');
+        worker.postMessage('setoption name MultiPV value 1');
+        worker.postMessage('isready');
+      }
       if (line === 'readyok') {
         ready = true;
         $('status').textContent = chess.isGameOver() ? 'Game complete · review is available' : 'Stockfish ready · White to move';
@@ -132,11 +137,11 @@
           if (startSearch(request)) $('status').textContent = request.bot ? 'Your move has been sent to Stockfish…' : 'Analyzing position…';
         }
       }
-      const score = line.match(/info .*\bscore (cp|mate) (-?\d+).*\bdepth (\d+)/);
-      if (score) {
-        lastEval = score[1] === 'cp' ? Number(score[2]) / 100 : (Number(score[2]) > 0 ? 99 : -99);
+      const liveInfo = parseUciInfoLine(line, chess.turn());
+      if (liveInfo) {
+        lastEval = liveInfo.whiteScore;
         $('eval').textContent = (lastEval > 0 ? '+' : '') + lastEval.toFixed(2);
-        $('best').textContent = 'Engine search depth ' + score[3];
+        $('best').textContent = 'Engine search depth ' + liveInfo.depth;
       }
       const best = line.match(/bestmove ([a-h][1-8][a-h][1-8][qrbn]?)/);
       if (best) {
@@ -235,24 +240,13 @@
         return move ? move.san : null;
       } catch { return null; }
     }
-    function scoreToWhitePawns(score, fen) {
-      if (!score) return null;
-      let value;
-      if (score.type === 'mate') {
-        const sign = Math.sign(score.value) || 1;
-        value = sign * (50 - Math.min(50, Math.abs(score.value)) * 0.01);
-      } else {
-        value = score.value / 100;
-      }
-      return fen.split(' ')[1] === 'w' ? value : -value;
-    }
     function evaluateFen(fen, depth) {
       return new Promise((resolve, reject) => {
         if (!worker || !ready || busy) {
           reject(new Error('The engine is busy or not ready.'));
           return;
         }
-        let bestScore = null, bestDepth = -1, pv = [];
+        let bestInfo = null, bestDepth = -1;
         let settled = false;
         const cleanup = () => {
           clearTimeout(timeout);
@@ -282,35 +276,26 @@
         const handler = (event) => {
           const text = String(event.data);
           if (text.startsWith('info ')) {
-            const scoreMatch = text.match(/\bscore\s+(cp|mate)\s+(-?\d+)/);
-            const depthMatch = text.match(/\bdepth\s+(\d+)/);
-            const depthValue = depthMatch ? Number(depthMatch[1]) : 0;
-            if (scoreMatch && depthValue >= bestDepth) {
-              bestDepth = depthValue;
-              bestScore = { type:scoreMatch[1], value:Number(scoreMatch[2]), depth:depthValue };
-              const pvMatch = text.match(/\bpv\s+(.+)$/);
-              pv = pvMatch ? pvMatch[1].trim().split(/\s+/) : [];
+            const info = parseUciInfoLine(text, fen.split(/\s+/)[1]);
+            if (info && info.depth >= bestDepth) {
+              bestDepth = info.depth;
+              bestInfo = info;
             }
           }
           const bestMatch = text.match(/^bestmove\s+(\S+)/);
           if (bestMatch) {
-            if (!bestScore) {
+            if (!bestInfo) {
               finish(null);
               return;
             }
-            finish({
-              whiteScore:scoreToWhitePawns(bestScore, fen),
-              score:bestScore,
-              bestMove:bestMatch[1],
-              pv,
-              depth:bestDepth
-            });
+            finish({ ...bestInfo, bestMove:bestMatch[1], depth:bestDepth });
           }
         };
         busy = true;
         worker.addEventListener('message', handler);
         worker.addEventListener('error', onWorkerError);
         try {
+          worker.postMessage('ucinewgame');
           worker.postMessage('position fen ' + fen);
           worker.postMessage('go depth ' + depth);
         } catch (error) {
@@ -337,35 +322,10 @@
       return false;
     }
     function classifyMove(row, before, after, loss, bestSan) {
-      if (row.checkmate) return { key:'checkmate', icon:'♔', name:'Checkmate' };
-      const bestMatch = before.bestMove === row.uci;
-      const moverBefore = row.color === 'w' ? before.whiteScore : -before.whiteScore;
-      const moverAfter = row.color === 'w' ? after.whiteScore : -after.whiteScore;
-      if (moverBefore >= 3 && moverAfter <= 1.5) return { key:'missed-win', icon:'??', name:'Missed win' };
-      if (bestMatch && loss <= 0.15 && isSoundMaterialSacrifice(row)) {
-        return { key:'brilliant', icon:'!!', name:'Brilliant' };
-      }
-      if (bestMatch && loss <= 0.12) return { key:'best', icon:'✓', name:'Best' };
-      if (loss <= 0.08) return { key:'great', icon:'!', name:'Great' };
-      if (loss <= 0.18) return { key:'excellent', icon:'★', name:'Excellent' };
-      if (loss <= 0.35) return { key:'good', icon:'○', name:'Good' };
-      if (loss <= 0.75) return { key:'inaccuracy', icon:'?!', name:'Inaccuracy' };
-      if (loss <= 1.5) return { key:'mistake', icon:'?', name:'Mistake' };
-      return { key:'blunder', icon:'??', name:'Blunder' };
+      return classifyMoveQuality({ row, before, after, loss, soundSacrifice:isSoundMaterialSacrifice(row) });
     }
-    function moveExplanation(label, loss, bestSan, replySan, row) {
-      if (label.key === 'checkmate') return `${row.san} ends the game with checkmate.`;
-      if (label.key === 'brilliant') return 'A sound material sacrifice: Stockfish ranks it first and the offered piece cannot simply be won without compensation.';
-      if (label.key === 'best') return `Matches Stockfish’s top choice and keeps the evaluation essentially unchanged${replySan ? `. The engine expects ${replySan} in reply` : ''}.`;
-      if (label.key === 'great') return `A very strong move, close to the engine’s preferred continuation${bestSan ? ` (${bestSan})` : ''}${replySan ? `. The engine expects ${replySan} in reply` : ''}.`;
-      if (label.key === 'excellent') return `A strong move that gives up only a small amount of the position’s evaluation${replySan ? `. The engine’s strongest reply is ${replySan}` : ''}.`;
-      if (label.key === 'good') return `A playable move that keeps the position healthy, although a slightly stronger continuation was available${replySan ? `. Watch for ${replySan}` : ''}.`;
-      const alternative = bestSan ? ` Stockfish preferred ${bestSan}.` : '';
-      const reply = replySan ? ` The strongest reply is ${replySan}.` : '';
-      if (label.key === 'inaccuracy') return `This slightly weakens the position and gives up about ${loss.toFixed(2)} pawns of evaluation.${alternative}${reply}`;
-      if (label.key === 'mistake') return `A significant error, losing about ${loss.toFixed(2)} pawns of evaluation.${alternative}${reply}`;
-      if (label.key === 'missed-win') return `The position was winning, but this move lets much of that advantage slip away.${alternative}${reply}`;
-      return `A major error that loses about ${loss.toFixed(2)} pawns of evaluation and gives the opponent a strong opportunity.${alternative}${reply}`;
+    function moveExplanation(label, loss, bestSan, replySan, row, after) {
+      return explainMoveQuality({ row, label, loss, bestSan, replySan, after });
     }
     function setReviewControls(disabled) {
       $('review').disabled = disabled;

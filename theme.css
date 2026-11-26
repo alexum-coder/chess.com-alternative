@@ -1,29 +1,44 @@
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
 :root {
-  --bg: #f1f3f2;
-  --panel: #ffffff;
-  --panel2: #f5f7f5;
-  --ink: #262522;
-  --muted: #747b75;
-  --line: #e1e6e1;
-  --light: #eeeed2;
-  --dark: #769656;
+  color-scheme: dark;
+  --bg: #242321;
+  --panel: #302f2d;
+  --panel2: #282725;
+  --ink: #f3f1ec;
+  --muted: #aaa7a0;
+  --line: #45433f;
+  --light: #f0d9b5;
+  --dark: #b58863;
   --accent: #81b64c;
-  --win: #dff2df;
-  --loss: #fbe1df;
-  --err: #b4443c;
-  --last: rgba(245, 200, 66, .48);
-  --dot: rgba(47, 66, 43, .30);
-  --pre: rgba(70, 130, 255, .30);
-  --pre-dot: rgba(40, 90, 220, .55);
-  color-scheme: light;
+  --win: #31543a;
+  --loss: #683b39;
+  --err: #ff817c;
+  --last: rgba(157,190,73,.55);
+  --dot: rgba(35, 26, 20, .38);
+  --pre: rgba(75, 132, 255, .30);
+  --pre-dot: rgba(42, 103, 230, .68);
+  --radius: 10px;
 }
 * { box-sizing: border-box; }
+html { color-scheme: dark; background: var(--bg); }
 body {
   margin: 0;
+  min-height: 100vh;
   color: var(--ink);
-  background: linear-gradient(180deg, #e9eeeb 0, #f4f6f4 260px, var(--bg) 100%) fixed;
+  background: radial-gradient(ellipse at 50% -20%, #363431 0, #292825 42%, var(--bg) 78%) fixed;
   font: 15px/1.5 Manrope, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
-button, input, select { font-family: inherit; }
+button, input, select, textarea { font-family: inherit; }
+input, select, textarea {
+  color: var(--ink);
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  color-scheme: dark;
+}
+button { color: var(--ink); }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+::selection { color: #151812; background: #a8d27b; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
