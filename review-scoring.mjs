@@ -368,7 +368,7 @@ function impactPhrase(loss) {
   return 'You give your opponent a major chance to turn the game around.';
 }
 
-export function explainMoveQuality({ row, label, loss, rawPawnsLoss, bestSan, bestLineSan, replySan, after, replyCapturesMovedPiece = false, replyTacticalText = '' }) {
+export function explainMoveQuality({ row, label, loss, rawPawnsLoss, bestSan, bestLineSan, replySan, after, replyCapturesMovedPiece = false, replyTacticalText = '', tacticalDetails = null }) {
   if (label.key === 'checkmate') return `You checkmate your opponent with ${row.san}. The game is over.`;
   if (label.key === 'book') {
     const openings = Array.isArray(row.bookOpenings) ? row.bookOpenings : [];
@@ -385,11 +385,56 @@ export function explainMoveQuality({ row, label, loss, rawPawnsLoss, bestSan, be
   const position = positionPhrase(after, row.color);
   const opponentHasForcedMate = after?.score?.type === 'mate' && Number(after.score.value) > 0;
 
-  if (label.key === 'blunder' && Number.isFinite(rawPawnsLoss) && rawPawnsLoss >= 4) {
-    const extra = Number.isFinite(loss) && loss <= 0.02
-      ? 'The game was already very one-sided, so the win chances barely moved—but this move still makes things much worse.'
-      : 'This makes the game much harder for you.';
-    return `${intent} This is a blunder—a major mistake. ${extra} ${position}${alternative}${continuation}${reply}`;
+  // Explain the actual consequence found in the engine's principal variation.
+  // A grade alone is not an explanation: name the piece, square and capture.
+  if (label.key === 'blunder' || label.key === 'mistake') {
+    const gradeName = label.key === 'blunder' ? 'blunder' : 'mistake';
+    if (opponentHasForcedMate) {
+      const matingStart = replySan ? `The opponent can start with ${replySan}` : 'The opponent has a forced mating attack';
+      const queenWon = row.move?.captured === 'q' ? ' Even though you win the queen, it does not stop the attack.' : '';
+      return `${intent} This is a ${gradeName} because it allows a forced mating sequence. ${queenWon}${matingStart} and force mate against your king. ${alternative}${continuation}`;
+    }
+
+    const materialLoss = tacticalDetails?.netMaterialLoss;
+    const lostPiece = tacticalDetails?.firstMajorLoss;
+    if (Number.isFinite(materialLoss) && materialLoss >= 1.5 && lostPiece) {
+      const piece = pieceName(lostPiece.piece);
+      const capture = lostPiece.san ? `with ${lostPiece.san}` : '';
+      let materialReply;
+      if (tacticalDetails.wonValue <= 0) {
+        materialReply = 'You do not win any material back in the best line.';
+      } else if (materialLoss >= 4.5) {
+        materialReply = 'Even after winning something back, you still lose much more material than you gain.';
+      } else {
+        materialReply = 'You win a little material back, but not enough to make up for the piece you lose.';
+      }
+      return `${intent} This is a ${gradeName} because it leaves your ${piece} on ${lostPiece.square} vulnerable. The opponent can win it ${capture}. ${materialReply} ${alternative}${continuation}`;
+    }
+
+    if (replyCapturesMovedPiece) {
+      const piece = pieceName(row.move?.piece);
+      const captured = row.move?.captured ? pieceName(row.move.captured) : '';
+      const exchange = captured
+        ? `You take their ${captured}, but they can take your ${piece} straight back.`
+        : `The opponent can take your ${piece} on ${row.move?.to || 'that square'} straight away`;
+      return `${intent} This is a ${gradeName} because ${exchange} You do not get a favourable exchange.${alternative}${position}`;
+    }
+
+    if (replyTacticalText) {
+      const reason = replyTacticalText.replace(/^That /, 'The opponent’s reply ' + (replySan || '') + ' ');
+      return `${intent} This is a ${gradeName} because ${reason} ${alternative}${position}${continuation}`;
+    }
+
+    const fallbackReason = replySan
+      ? `The opponent's strongest reply is ${replySan}, which gives them a much stronger position.`
+      : 'The move gives the opponent a major advantage and leaves you in a much worse position.';
+    const gradeImpact = label.key === 'mistake'
+      ? 'It gives your opponent a real chance to take control.'
+      : 'It gives your opponent a major chance to turn the game around.';
+    const saturatedSwing = Number.isFinite(rawPawnsLoss) && rawPawnsLoss >= 4 && Number.isFinite(loss) && loss <= 0.02
+      ? 'The position was already very one-sided, so the win chances barely moved, but the evaluation still got much worse.'
+      : '';
+    return `${intent} This is a ${gradeName}. ${gradeImpact} ${fallbackReason} ${saturatedSwing} ${alternative || 'The safer move was to keep your pieces protected.'} ${position}${continuation}`;
   }
 
   if (row.move?.captured === 'q') {
@@ -426,9 +471,6 @@ export function explainMoveQuality({ row, label, loss, rawPawnsLoss, bestSan, be
   if (label.key === 'inaccuracy') {
     return `${intent} Not your best option: this gives your opponent a little room to improve. ${alternative || 'A more careful move would have kept your advantage.'}${position}${reply}`;
   }
-  if (label.key === 'mistake') {
-    return `${intent} This is a mistake because it gives your opponent a real chance to take control. ${alternative || 'A safer move was available.'}${position}${reply}`;
-  }
   if (label.key === 'miss') {
     const opportunity = row.missedOpportunity || {};
     if (opportunity.type === 'mate') return `${intent} You had a forced checkmate available with ${opportunity.san || bestSan || 'the engine’s suggested move'}, but this move lets the chance slip away.${alternative}${continuation}${reply}`;
@@ -437,9 +479,6 @@ export function explainMoveQuality({ row, label, loss, rawPawnsLoss, bestSan, be
   }
   if (label.key === 'missed-win') {
     return `${intent} You had a chance to turn this into a winning position, but this move lets your opponent back into the game.${alternative}${continuation}${reply}`;
-  }
-  if (label.key === 'blunder') {
-    return `${intent} This is a serious mistake and gives your opponent a big opportunity. ${alternative || 'You needed to find a more careful move.'}${position}${reply}${continuation}`;
   }
   return `${intent} ${impact || 'The engine has a more accurate way to play.'} ${position}${alternative}${reply}`;
 }

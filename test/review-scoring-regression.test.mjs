@@ -13,7 +13,7 @@ test('blunder explanation does not throw on missing optional tactical detail', (
     bestSan:'Qh5+', bestLineSan:'Qh5+ Kh7 Qf7', replySan:'Qh5+',
     after:{ whiteScore:-2.1 }
   });
-  assert.match(explanation, /serious mistake/i);
+  assert.match(explanation, /blunder/i);
   assert.match(explanation, /Qh5\+/);
   assert.doesNotMatch(explanation, /undefined/);
 });
@@ -81,4 +81,56 @@ test('book and checkmate explanations are understandable without engine terminol
   assert.match(book, /studied for many years/i);
   assert.match(mate, /checkmate your opponent/i);
   assert.doesNotMatch(`${book} ${mate}`, /WDL|engine evaluation|expected-score/i);
+});
+
+
+test('blunder explanation names the queen, square, and engine capture that wins it', () => {
+  const row = {
+    san:'Qd7', color:'b',
+    move:{piece:'q',from:'d8',to:'d7',captured:null}
+  };
+  const explanation = explainMoveQuality({
+    row, label:{key:'blunder'}, loss:0.45, bestSan:'Qe7', replySan:'Re1+',
+    after:{whiteScore:5.2},
+    tacticalDetails:{
+      netMaterialLoss:9, lostValue:9, wonValue:0,
+      firstMajorLoss:{piece:'q',square:'d7',san:'Rxd7'},
+      opponentCaptures:[{piece:'q',square:'d7',san:'Rxd7'}], playerCaptures:[]
+    }
+  });
+  assert.match(explanation, /blunder because it leaves your queen on d7 vulnerable/i);
+  assert.match(explanation, /win it with Rxd7/i);
+  assert.match(explanation, /do not win any material back/i);
+  assert.match(explanation, /stronger choice was Qe7/i);
+});
+
+test('mistake explanation describes a piece loss and the small amount won back', () => {
+  const row = {
+    san:'h3', color:'w',
+    move:{piece:'p',from:'h2',to:'h3',captured:null}
+  };
+  const explanation = explainMoveQuality({
+    row, label:{key:'mistake'}, loss:0.22, bestSan:'Nf3', replySan:'Nxa8',
+    after:{whiteScore:-1.7},
+    tacticalDetails:{
+      netMaterialLoss:2, lostValue:3, wonValue:1,
+      firstMajorLoss:{piece:'n',square:'a8',san:'Nxa8'},
+      opponentCaptures:[{piece:'n',square:'a8',san:'Nxa8'}],
+      playerCaptures:[{piece:'p',square:'b7',san:'cxb7'}]
+    }
+  });
+  assert.match(explanation, /mistake because it leaves your knight on a8 vulnerable/i);
+  assert.match(explanation, /win it with Nxa8/i);
+  assert.match(explanation, /win a little material back/i);
+});
+
+test('blunder without a proven material tactic still explains the engine reply and safer move', () => {
+  const explanation = explainMoveQuality({
+    row:{san:'Rf1',color:'w',move:{piece:'r',from:'a1',to:'f1'}},
+    label:{key:'blunder'},loss:0.4,bestSan:'Qh5+',replySan:'Qh5+',
+    after:{whiteScore:-2.1}
+  });
+  assert.match(explanation, /blunder/i);
+  assert.match(explanation, /strongest reply is Qh5\+/i);
+  assert.match(explanation, /stronger choice was Qh5\+/i);
 });
